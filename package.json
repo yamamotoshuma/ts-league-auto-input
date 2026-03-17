@@ -1,0 +1,27 @@
+{
+  "name": "ts-league-batter-sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Order Made の野手成績を TS-League に自動反映するローカル常駐アプリ",
+  "scripts": {
+    "dev": "npm run build && node dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "discover:auth": "npm run build && node dist/scripts/discover-authenticated.js",
+    "check:source": "npm run build && node dist/scripts/check-source-extraction.js",
+    "check:target-login": "npm run build && node dist/scripts/check-target-login.js",
+    "check:target-form": "npm run build && node dist/scripts/check-target-form.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "playwright": "^1.54.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
