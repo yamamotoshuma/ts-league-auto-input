@@ -48,12 +48,15 @@ npm run dev
 
 家の PC や Linux サーバへ常駐させるときの手順です。実運用では `localhost` バインドのまま動かし、必要なら Cloudflare Tunnel やリバースプロキシを前段に置いてください。
 
-### 1. Node.js / npm / Git を入れる
+### 1. Node.js / npm / Git / curl を入れる
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y nodejs npm git
+sudo apt-get install -y nodejs npm git curl
 ```
+
+- Ubuntu 24.04 の標準 Node.js は `v18` 系です。現時点では `npm ci` と `npm run build` は通りますが、一部依存関係の engine warning は出ます。
+- warning を避けたい場合は、標準パッケージの代わりに Node 22 LTS を別途入れてください。
 
 ### 2. GitHub から取得する
 
