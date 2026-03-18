@@ -32,7 +32,9 @@ cp secrets/ts_league.local.json.example secrets/ts_league.local.json
 cp secrets/notifications.local.json.example secrets/notifications.local.json
 ```
 
-4. `.env.example` を必要に応じて反映する
+4. 必要なら環境変数を設定する
+
+このアプリは `.env` を自動読込しません。`HOST` や `APP_BASIC_AUTH_*` を変えたい場合は、シェルで `export` するか systemd の `EnvironmentFile` で渡してください。何も指定しなければ `127.0.0.1:3000` で起動します。
 
 5. 開発サーバを起動する
 
@@ -41,6 +43,107 @@ npm run dev
 ```
 
 6. ブラウザで `http://127.0.0.1:3000` を開く
+
+## Ubuntu 24.04 へのデプロイ
+
+家の PC や Linux サーバへ常駐させるときの手順です。実運用では `localhost` バインドのまま動かし、必要なら Cloudflare Tunnel やリバースプロキシを前段に置いてください。
+
+### 1. Node.js / npm / Git を入れる
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nodejs npm git
+```
+
+### 2. GitHub から取得する
+
+```bash
+mkdir -p /home/yamamoto/dev
+cd /home/yamamoto/dev
+git clone https://github.com/yamamotoshuma/ts-league-auto-input.git
+cd ts-league-auto-input
+```
+
+### 3. 依存関係と Playwright を入れる
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+```
+
+### 4. secrets と環境変数ファイルを用意する
+
+```bash
+cp .env.example .env.production
+cp secrets/order_made.local.json.example secrets/order_made.local.json
+cp secrets/ts_league.local.json.example secrets/ts_league.local.json
+cp secrets/notifications.local.json.example secrets/notifications.local.json
+chmod 600 .env.production secrets/*.json
+```
+
+- `.env.production` は systemd から読み込みます
+- `HOST=127.0.0.1` のまま運用してください
+- 外部公開する場合は `APP_BASIC_AUTH_USER` と `APP_BASIC_AUTH_PASSWORD` も設定してください
+- `secrets/*.json` には実値を入れます。Git には含めません
+
+### 5. systemd サービスを作る
+
+`/etc/systemd/system/ts-league-auto-input.service`
+
+```ini
+[Unit]
+Description=TS-League batter sync app
+After=network.target
+
+[Service]
+Type=simple
+User=yamamoto
+Group=yamamoto
+WorkingDirectory=/home/yamamoto/dev/ts-league-auto-input
+EnvironmentFile=/home/yamamoto/dev/ts-league-auto-input/.env.production
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+反映:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ts-league-auto-input
+sudo systemctl status ts-league-auto-input
+```
+
+### 6. ヘルスチェック
+
+```bash
+curl http://127.0.0.1:3000/api/health
+```
+
+ブラウザ確認:
+
+- 同じマシンから `http://127.0.0.1:3000`
+- 別端末から見る場合は SSH port forward や Cloudflare Tunnel を使う
+
+### 7. 更新手順
+
+```bash
+cd /home/yamamoto/dev/ts-league-auto-input
+git pull
+npm ci
+npm run build
+sudo systemctl restart ts-league-auto-input
+sudo systemctl status ts-league-auto-input
+```
+
+ログ確認:
+
+```bash
+journalctl -u ts-league-auto-input -n 200 --no-pager
+```
 
 ## Secrets
 
