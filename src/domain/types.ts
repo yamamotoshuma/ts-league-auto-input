@@ -156,6 +156,12 @@ export interface TargetEventOption {
   label: string;
 }
 
+export interface TargetSelectOption {
+  value: string;
+  label: string;
+  normalizedLabel: string;
+}
+
 export interface TargetAppearanceField {
   appearanceIndex: number;
   main: TargetControlRef | null;
@@ -172,7 +178,11 @@ export interface TargetPlayerRow {
   playerLabel: string;
   normalizedPlayerLabel: string;
   selectedUserId: string | null;
+  playerControl: TargetControlRef | null;
+  playerOptions: TargetSelectOption[];
   selectedPositionLabel: string | null;
+  positionControl: TargetControlRef | null;
+  positionOptions: TargetSelectOption[];
   statFields: Partial<Record<BatterStatField, TargetControlRef>>;
   appearanceFields: TargetAppearanceField[];
   extraControls: TargetControlRef[];
@@ -211,10 +221,20 @@ export interface PlateAppearanceAssignment {
   warnings: string[];
 }
 
+export interface TargetOptionAssignment {
+  control: TargetControlRef | null;
+  targetOptionValue: string | null;
+  targetOptionLabel: string | null;
+  warnings: string[];
+}
+
 export interface MappingAssignment {
   source: BatterStat;
   targetPlayerLabel: string | null;
+  targetLineupIndex: number | null;
   confidence: MatchConfidence;
+  playerSelection: TargetOptionAssignment | null;
+  positionSelection: TargetOptionAssignment | null;
   statAssignments: Partial<Record<BatterStatField, TargetControlRef>>;
   appearanceAssignments: PlateAppearanceAssignment[];
   warnings: string[];

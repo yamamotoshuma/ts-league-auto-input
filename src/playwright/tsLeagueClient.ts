@@ -7,6 +7,7 @@ import type {
   TargetEventOption,
   TargetFormPreview,
   TargetPlayerRow,
+  TargetSelectOption,
   TsLeagueSecrets,
 } from "../domain/types";
 import type { Page } from "playwright";
@@ -212,6 +213,18 @@ export async function inspectTargetForm(page: Page): Promise<TargetFormPreview> 
         label: option.textContent?.trim() ?? "",
       }));
 
+      const toSelectOptions = (select: HTMLSelectElement | null): TargetSelectOption[] =>
+        Array.from(select?.options ?? []).map((option) => ({
+          value: option.value,
+          label: option.textContent?.replace(/\s+/g, " ").trim() ?? "",
+          normalizedLabel: (option.textContent ?? "")
+            .normalize("NFKC")
+            .replace(/\[[^\]]+\]/g, "")
+            .replace(/[　\s]+/g, "")
+            .trim()
+            .toLowerCase(),
+        }));
+
       const bcount = Number.parseInt(
         (form.querySelector('input[name="bcount"]') as HTMLInputElement | null)?.value ?? "0",
         10,
@@ -231,6 +244,8 @@ export async function inspectTargetForm(page: Page): Promise<TargetFormPreview> 
           `select[name="MemberScoreOfSyubi[${lineupIndex}]"]`,
         ) as HTMLSelectElement | null;
         const positionLabel = positionSelect?.selectedOptions[0]?.textContent?.trim() ?? null;
+        const playerOptions = toSelectOptions(userSelect);
+        const positionOptions = toSelectOptions(positionSelect);
 
         const statFields: TargetPlayerRow["statFields"] = {
           rbi: {
@@ -383,7 +398,39 @@ export async function inspectTargetForm(page: Page): Promise<TargetFormPreview> 
           playerLabel: userLabel,
           normalizedPlayerLabel: userLabel.replace(/\[[^\]]+\]/g, "").replace(/\s+/g, "").toLowerCase(),
           selectedUserId: userSelect.value,
+          playerControl: {
+            formIndex: 0,
+            tableIndex: -1,
+            rowIndex: lineupIndex,
+            cellIndex: -1,
+            controlIndex: -1,
+            headerText: "選手",
+            tagName: "select",
+            type: "select-one",
+            name: `MemberScoreOfUserId[${lineupIndex}]`,
+            id: null,
+            currentValue: userSelect.value,
+            currentLabel: userLabel,
+          },
+          playerOptions,
           selectedPositionLabel: positionLabel,
+          positionControl: positionSelect
+            ? {
+                formIndex: 0,
+                tableIndex: -1,
+                rowIndex: lineupIndex,
+                cellIndex: -1,
+                controlIndex: -1,
+                headerText: "守備位置",
+                tagName: "select",
+                type: "select-one",
+                name: `MemberScoreOfSyubi[${lineupIndex}]`,
+                id: null,
+                currentValue: positionSelect.value,
+                currentLabel: positionLabel,
+              }
+            : null,
+          positionOptions,
           statFields,
           appearanceFields,
           extraControls: [],
@@ -440,10 +487,42 @@ function stringifyStatValue(value: BatterStat[keyof BatterStat]): string {
   return String(value);
 }
 
+function isEmptySelectionValue(value: string): boolean {
+  return value === "" || value === "0";
+}
+
 export async function applyMapping(page: Page, mapping: MappingPreview): Promise<void> {
   for (const assignment of mapping.assignments) {
     if (!assignment.targetPlayerLabel) {
       throw new Error(`target row not found for ${assignment.source.playerName}`);
+    }
+
+    if (!assignment.playerSelection?.control || !assignment.playerSelection.targetOptionValue) {
+      throw new Error(`target player selection is incomplete for ${assignment.source.playerName}`);
+    }
+
+    {
+      const locator = await getControlLocator(page, assignment.playerSelection.control);
+      const existingValue = await locator.inputValue().catch(() => "");
+      if (!isEmptySelectionValue(existingValue) && existingValue !== assignment.playerSelection.targetOptionValue) {
+        throw new Error(`existing target player would be overwritten for ${assignment.source.playerName}`);
+      }
+
+      if (existingValue !== assignment.playerSelection.targetOptionValue) {
+        await locator.selectOption(assignment.playerSelection.targetOptionValue);
+      }
+    }
+
+    if (assignment.positionSelection?.control && assignment.positionSelection.targetOptionValue !== null) {
+      const locator = await getControlLocator(page, assignment.positionSelection.control);
+      const existingValue = await locator.inputValue().catch(() => "");
+      if (!isEmptySelectionValue(existingValue) && existingValue !== assignment.positionSelection.targetOptionValue) {
+        throw new Error(`existing target position would be overwritten for ${assignment.source.playerName}`);
+      }
+
+      if (existingValue !== assignment.positionSelection.targetOptionValue) {
+        await locator.selectOption(assignment.positionSelection.targetOptionValue);
+      }
     }
 
     for (const [field, control] of Object.entries(assignment.statAssignments)) {
@@ -482,7 +561,7 @@ export async function applyMapping(page: Page, mapping: MappingPreview): Promise
 
       const locator = await getControlLocator(page, appearance.targetControl);
       const existingValue = await locator.inputValue().catch(() => "");
-      if (existingValue !== "0" && existingValue !== "" && existingValue !== appearance.targetOptionValue) {
+      if (!isEmptySelectionValue(existingValue) && existingValue !== appearance.targetOptionValue) {
         throw new Error(
           `existing target appearance value would be overwritten for ${assignment.source.playerName} / ${appearance.sourceText}`,
         );

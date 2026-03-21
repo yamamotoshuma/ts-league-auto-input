@@ -1,6 +1,6 @@
 # Discovery
 
-Observed on 2026-03-17. This document now includes authenticated discovery using local-only secrets supplied during the session.
+Observed on 2026-03-17 and updated on 2026-03-21. This document now includes authenticated discovery using local-only secrets supplied during the session.
 
 ## Current repository state
 
@@ -107,6 +107,28 @@ Inference from authenticated data:
   - row 8: `[19]岩本`, position `左`
   - row 9: `[6]津村`, position `二`
 
+### TS-League empty-lineup variant confirmed on 2026-03-21
+
+- Target game `2026-03-21 プレアデス` opened the same `gameof_edit.php` form shape, but every lineup row started empty:
+  - `bcount=9`
+  - `select[name="MemberScoreOfUserId[ROW]"]` had selected value `0`
+  - selected player label was `-`
+  - selected position label was `-`
+- The per-row player select still exposed the full registered roster, including:
+  - `[4]伊藤`
+  - `[6]津村`
+  - `[10]早河`
+  - `[17]安楽`
+  - `[19]岩本`
+  - `[33]坂田`
+  - `[61]戸嶋`
+  - `[77]山本`
+  - `[00]助っ人1`
+- This means empty rows are writable, but automation must explicitly select:
+  - `MemberScoreOfUserId[ROW]`
+  - `MemberScoreOfSyubi[ROW]`
+  before filling batting result controls.
+
 Observed target event option labels include:
 
 - `安打`
@@ -158,6 +180,22 @@ Confirmed against the approved live match `3/7/9:00-光が丘公園`.
   1. detecting `complete.php`
   2. reopening the same target game
   3. comparing saved values against the intended mapping
+
+### TS-League live save flow confirmed on 2026-03-21 for an initially empty lineup
+
+- Source game `Order Made game/38` was mapped to target game `2026-03-21 プレアデス`.
+- All 9 target rows began with no selected player and no selected position.
+- After selecting player + position first, then filling stats + plate appearances, save completed successfully.
+- Re-open verification succeeded with the expected lineup:
+  - row 1 `[4]伊藤`
+  - row 2 `[6]津村`
+  - row 3 `[77]山本`
+  - row 4 `[17]安楽`
+  - row 5 `[10]早河`
+  - row 6 `[33]坂田`
+  - row 7 `[19]岩本`
+  - row 8 `[61]戸嶋`
+  - row 9 `[00]助っ人1`
 
 ## Unauthenticated screen transitions
 

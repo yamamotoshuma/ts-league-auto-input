@@ -6,12 +6,14 @@ import type {
   PlateAppearanceAssignment,
   TargetControlRef,
   TargetFormPreview,
+  TargetOptionAssignment,
   TargetPlayerRow,
+  TargetSelectOption,
 } from "./types";
 import type { BatterStatField } from "../utils/constants";
 import { BATTER_STAT_FIELDS } from "../utils/constants";
 import { findTargetEventOption, isTargetEventLabelCompatible, normalizePosition } from "./playEvent";
-import { normalizeName } from "../utils/nameNormalizer";
+import { expandNameCandidates, namesLooselyMatch, normalizeName } from "../utils/nameNormalizer";
 
 const TARGET_WRITABLE_STAT_FIELDS: Array<"rbi" | "runs" | "stolenBases" | "errors"> = [
   "rbi",
@@ -36,15 +38,30 @@ function isMeaningfulAppearanceValue(value: string | null): boolean {
   return value !== null && value !== "" && value !== "0";
 }
 
+function isMeaningfulSelectValue(value: string | null): boolean {
+  return value !== null && value !== "" && value !== "0";
+}
+
+function isPlaceholderLabel(value: string | null): boolean {
+  return value === null || value.trim() === "" || value.trim() === "-";
+}
+
+function getTargetPosition(target: TargetPlayerRow): string | null {
+  if (isPlaceholderLabel(target.selectedPositionLabel)) {
+    return null;
+  }
+
+  return normalizePosition(target.selectedPositionLabel);
+}
+
 function compareConfidence(source: BatterStat, target: TargetPlayerRow): MatchConfidence {
-  const sourceName = normalizeName(source.playerName);
-  const targetName = normalizeTargetPlayerName(target.playerLabel);
   const sourcePosition = normalizePosition(source.position);
-  const targetPosition = normalizePosition(target.selectedPositionLabel);
+  const targetPosition = getTargetPosition(target);
 
   const orderMatches = source.battingOrder !== null && target.lineupIndex === source.battingOrder;
   const positionMatches = sourcePosition !== null && targetPosition !== null && sourcePosition === targetPosition;
-  const nameMatches = sourceName !== "" && targetName !== "" && targetName.includes(sourceName);
+  const nameMatches =
+    !isPlaceholderLabel(target.playerLabel) && namesLooselyMatch(source.playerName, normalizeTargetPlayerName(target.playerLabel));
 
   if (orderMatches && positionMatches) {
     return nameMatches ? "high" : "medium";
@@ -65,11 +82,11 @@ function scoreTargetRow(source: BatterStat, target: TargetPlayerRow): number {
   const confidence = compareConfidence(source, target);
   const orderBonus = source.battingOrder !== null && target.lineupIndex === source.battingOrder ? 20 : 0;
   const positionBonus =
-    normalizePosition(source.position) !== null &&
-    normalizePosition(target.selectedPositionLabel) === normalizePosition(source.position)
-      ? 10
+    normalizePosition(source.position) !== null && getTargetPosition(target) === normalizePosition(source.position) ? 10 : 0;
+  const nameBonus =
+    !isPlaceholderLabel(target.playerLabel) && namesLooselyMatch(source.playerName, normalizeTargetPlayerName(target.playerLabel))
+      ? 15
       : 0;
-  const nameBonus = normalizeTargetPlayerName(target.playerLabel).includes(normalizeName(source.playerName)) ? 15 : 0;
 
   switch (confidence) {
     case "high":
@@ -85,9 +102,7 @@ function isWritableField(field: BatterStatField): field is Exclude<BatterStatFie
   return !["playerName", "battingOrder", "position"].includes(field);
 }
 
-function collectAssignments(
-  target: TargetPlayerRow | null,
-): Partial<Record<BatterStatField, TargetControlRef>> {
+function collectAssignments(target: TargetPlayerRow | null): Partial<Record<BatterStatField, TargetControlRef>> {
   if (!target) {
     return {};
   }
@@ -167,6 +182,144 @@ function buildAppearanceAssignments(
   });
 }
 
+function scorePlayerOption(sourcePlayerName: string, option: TargetSelectOption): number {
+  if (!isMeaningfulSelectValue(option.value)) {
+    return 0;
+  }
+
+  const sourceCandidates = expandNameCandidates(sourcePlayerName);
+  let score = 0;
+
+  for (const candidate of sourceCandidates) {
+    if (option.normalizedLabel === candidate) {
+      score = Math.max(score, 100);
+      continue;
+    }
+
+    if (option.normalizedLabel.includes(candidate) || candidate.includes(option.normalizedLabel)) {
+      score = Math.max(score, 80);
+    }
+  }
+
+  return score;
+}
+
+function resolvePlayerSelection(source: BatterStat, target: TargetPlayerRow): TargetOptionAssignment {
+  const warnings: string[] = [];
+  const currentValue = target.playerControl?.currentValue ?? target.selectedUserId;
+  const currentLabel = target.playerLabel;
+
+  if (!target.playerControl) {
+    return {
+      control: null,
+      targetOptionValue: null,
+      targetOptionLabel: null,
+      warnings: ["target player select not found"],
+    };
+  }
+
+  if (isMeaningfulSelectValue(currentValue)) {
+    if (namesLooselyMatch(source.playerName, currentLabel)) {
+      return {
+        control: target.playerControl,
+        targetOptionValue: currentValue,
+        targetOptionLabel: currentLabel,
+        warnings,
+      };
+    }
+
+    return {
+      control: target.playerControl,
+      targetOptionValue: null,
+      targetOptionLabel: null,
+      warnings: ["existing target player would be overwritten"],
+    };
+  }
+
+  const candidates = target.playerOptions
+    .map((option) => ({ option, score: scorePlayerOption(source.playerName, option) }))
+    .sort((left, right) => right.score - left.score);
+  const best = candidates[0] ?? null;
+  const second = candidates[1] ?? null;
+
+  if (!best || best.score === 0) {
+    warnings.push("target player option not resolved");
+    return {
+      control: target.playerControl,
+      targetOptionValue: null,
+      targetOptionLabel: null,
+      warnings,
+    };
+  }
+
+  if (second && second.score === best.score) {
+    warnings.push("multiple target player options matched with equal score");
+  }
+
+  return {
+    control: target.playerControl,
+    targetOptionValue: best.option.value,
+    targetOptionLabel: best.option.label,
+    warnings,
+  };
+}
+
+function resolvePositionSelection(source: BatterStat, target: TargetPlayerRow): TargetOptionAssignment | null {
+  const sourcePosition = normalizePosition(source.position);
+  if (!sourcePosition) {
+    return null;
+  }
+
+  if (!target.positionControl) {
+    return {
+      control: null,
+      targetOptionValue: null,
+      targetOptionLabel: null,
+      warnings: ["target position select not found"],
+    };
+  }
+
+  const currentValue = target.positionControl.currentValue;
+  const currentLabel = target.selectedPositionLabel;
+  const currentPosition = getTargetPosition(target);
+  if (currentPosition === sourcePosition && currentValue !== null) {
+    return {
+      control: target.positionControl,
+      targetOptionValue: currentValue,
+      targetOptionLabel: currentLabel,
+      warnings: [],
+    };
+  }
+
+  if (currentPosition !== null && currentPosition !== sourcePosition) {
+    return {
+      control: target.positionControl,
+      targetOptionValue: null,
+      targetOptionLabel: null,
+      warnings: ["existing target position would be overwritten"],
+    };
+  }
+
+  const option =
+    target.positionOptions.find((candidate) => normalizePosition(candidate.label) === sourcePosition) ?? null;
+
+  if (!option) {
+    return {
+      control: target.positionControl,
+      targetOptionValue: null,
+      targetOptionLabel: null,
+      warnings: ["target position option not resolved"],
+    };
+  }
+
+  return {
+    control: target.positionControl,
+    targetOptionValue: option.value,
+    targetOptionLabel: option.label,
+    warnings: [],
+  };
+}
+
 function createAssignment(source: BatterStat, targetPreview: TargetFormPreview): MappingAssignment {
   const sortedCandidates = targetPreview.playerRows
     .map((target) => ({ target, score: scoreTargetRow(source, target) }))
@@ -180,7 +333,10 @@ function createAssignment(source: BatterStat, targetPreview: TargetFormPreview):
     return {
       source,
       targetPlayerLabel: null,
+      targetLineupIndex: null,
       confidence: "none",
+      playerSelection: null,
+      positionSelection: null,
       statAssignments: {},
       appearanceAssignments: buildAppearanceAssignments(source, null, targetPreview),
       warnings: ["target player row not found"],
@@ -192,9 +348,17 @@ function createAssignment(source: BatterStat, targetPreview: TargetFormPreview):
   }
 
   const confidence = compareConfidence(source, best.target);
-  const nameMatches = normalizeTargetPlayerName(best.target.playerLabel).includes(normalizeName(source.playerName));
+  const playerSelection = resolvePlayerSelection(source, best.target);
+  const positionSelection = resolvePositionSelection(source, best.target);
+  const displayTargetLabel = playerSelection.targetOptionLabel ?? best.target.playerLabel;
+  const nameMatches = !isPlaceholderLabel(displayTargetLabel) && namesLooselyMatch(source.playerName, displayTargetLabel);
   if (!nameMatches) {
     warnings.push("matched by batting order / position because player name did not match directly");
+  }
+
+  warnings.push(...playerSelection.warnings);
+  if (positionSelection) {
+    warnings.push(...positionSelection.warnings);
   }
 
   const appearanceAssignments = buildAppearanceAssignments(source, best.target, targetPreview);
@@ -206,8 +370,11 @@ function createAssignment(source: BatterStat, targetPreview: TargetFormPreview):
 
   return {
     source,
-    targetPlayerLabel: best.target.playerLabel,
+    targetPlayerLabel: displayTargetLabel,
+    targetLineupIndex: best.target.lineupIndex,
     confidence,
+    playerSelection,
+    positionSelection,
     statAssignments: collectAssignments(best.target),
     appearanceAssignments,
     warnings,
@@ -215,6 +382,28 @@ function createAssignment(source: BatterStat, targetPreview: TargetFormPreview):
 }
 
 function hasOverwriteRisk(assignment: MappingAssignment): boolean {
+  if (assignment.playerSelection?.control) {
+    const currentValue = assignment.playerSelection.control.currentValue ?? null;
+    if (
+      isMeaningfulSelectValue(currentValue) &&
+      assignment.playerSelection.targetOptionValue !== null &&
+      currentValue !== assignment.playerSelection.targetOptionValue
+    ) {
+      return true;
+    }
+  }
+
+  if (assignment.positionSelection?.control) {
+    const currentValue = assignment.positionSelection.control.currentValue ?? null;
+    if (
+      isMeaningfulSelectValue(currentValue) &&
+      assignment.positionSelection.targetOptionValue !== null &&
+      currentValue !== assignment.positionSelection.targetOptionValue
+    ) {
+      return true;
+    }
+  }
+
   for (const field of TARGET_WRITABLE_STAT_FIELDS) {
     const sourceValue = assignment.source[field];
     if (sourceValue === null) {
@@ -240,6 +429,16 @@ function hasOverwriteRisk(assignment: MappingAssignment): boolean {
 }
 
 function hasAllWritableFields(assignment: MappingAssignment): boolean {
+  if (!assignment.playerSelection?.control || !assignment.playerSelection.targetOptionValue) {
+    return false;
+  }
+
+  if (assignment.source.position !== null) {
+    if (!assignment.positionSelection?.control || assignment.positionSelection.targetOptionValue === null) {
+      return false;
+    }
+  }
+
   for (const field of TARGET_WRITABLE_STAT_FIELDS) {
     const sourceValue = assignment.source[field];
     if (sourceValue === null) {
@@ -267,10 +466,10 @@ export function buildMappingPreview(
   targetPreview: TargetFormPreview,
 ): MappingPreview {
   const assignments = sourceStats.map((source) => createAssignment(source, targetPreview));
-  const matchedTargetNames = new Set(
+  const matchedLineupIndexes = new Set(
     assignments
-      .map((assignment) => assignment.targetPlayerLabel)
-      .filter((value): value is string => value !== null),
+      .map((assignment) => assignment.targetLineupIndex)
+      .filter((value): value is number => value !== null),
   );
 
   return {
@@ -279,7 +478,7 @@ export function buildMappingPreview(
       .filter((assignment) => assignment.targetPlayerLabel === null)
       .map((assignment) => assignment.source.playerName),
     unmatchedTargetPlayers: targetPreview.playerRows
-      .filter((row) => !matchedTargetNames.has(row.playerLabel))
+      .filter((row) => row.lineupIndex === null || !matchedLineupIndexes.has(row.lineupIndex))
       .map((row) => row.playerLabel),
     warnings: assignments.flatMap((assignment) =>
       assignment.warnings.map((warning) => `${assignment.source.playerName}: ${warning}`),
@@ -301,6 +500,25 @@ export function isCommitReady(mapping: MappingPreview): boolean {
   });
 }
 
+function findTargetRowForVerification(
+  assignment: MappingAssignment,
+  targetPreview: TargetFormPreview,
+): TargetPlayerRow | null {
+  if (assignment.targetLineupIndex !== null) {
+    const byLineupIndex =
+      targetPreview.playerRows.find((row) => row.lineupIndex === assignment.targetLineupIndex) ?? null;
+    if (byLineupIndex) {
+      return byLineupIndex;
+    }
+  }
+
+  if (!assignment.targetPlayerLabel) {
+    return null;
+  }
+
+  return targetPreview.playerRows.find((row) => row.playerLabel === assignment.targetPlayerLabel) ?? null;
+}
+
 export function verifyAppliedMapping(
   mapping: MappingPreview,
   targetPreview: TargetFormPreview,
@@ -313,10 +531,26 @@ export function verifyAppliedMapping(
       continue;
     }
 
-    const targetRow = targetPreview.playerRows.find((row) => row.playerLabel === assignment.targetPlayerLabel);
+    const targetRow = findTargetRowForVerification(assignment, targetPreview);
     if (!targetRow) {
       issues.push(`${assignment.source.playerName}: target row disappeared after save`);
       continue;
+    }
+
+    if (
+      assignment.playerSelection &&
+      assignment.playerSelection.targetOptionValue !== null &&
+      (targetRow.selectedUserId ?? "") !== assignment.playerSelection.targetOptionValue
+    ) {
+      issues.push(`${assignment.source.playerName}: target player was not selected as expected`);
+    }
+
+    if (
+      assignment.positionSelection &&
+      assignment.positionSelection.targetOptionValue !== null &&
+      (targetRow.positionControl?.currentValue ?? "") !== assignment.positionSelection.targetOptionValue
+    ) {
+      issues.push(`${assignment.source.playerName}: target position was not selected as expected`);
     }
 
     for (const field of TARGET_WRITABLE_STAT_FIELDS) {

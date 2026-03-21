@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { buildMappingPreview, isCommitReady, verifyAppliedMapping } from "../src/domain/mapping";
 import type { BatterStat, TargetFormPreview, TargetPlayerRow } from "../src/domain/types";
 
+function createPlayerOption(value: string, label: string) {
+  return {
+    value,
+    label,
+    normalizedLabel: label.replace(/\[[^\]]+\]/g, "").replace(/[　\s]+/g, "").toLowerCase(),
+  };
+}
+
 function createTargetRow(overrides?: Partial<TargetPlayerRow>): TargetPlayerRow {
   return {
     formIndex: 0,
@@ -11,7 +19,53 @@ function createTargetRow(overrides?: Partial<TargetPlayerRow>): TargetPlayerRow 
     playerLabel: "[10]山田太郎",
     normalizedPlayerLabel: "山田太郎",
     selectedUserId: "10",
+    playerControl: {
+      formIndex: 0,
+      tableIndex: -1,
+      rowIndex: 1,
+      cellIndex: -1,
+      controlIndex: -1,
+      headerText: "選手",
+      tagName: "select",
+      type: "select-one",
+      name: "MemberScoreOfUserId[1]",
+      id: null,
+      currentValue: "10",
+      currentLabel: "[10]山田太郎",
+    },
+    playerOptions: [
+      createPlayerOption("0", "-"),
+      createPlayerOption("10", "[10]山田太郎"),
+      createPlayerOption("19", "[19]岩本"),
+      createPlayerOption("100", "[00]助っ人1"),
+    ],
     selectedPositionLabel: "遊",
+    positionControl: {
+      formIndex: 0,
+      tableIndex: -1,
+      rowIndex: 1,
+      cellIndex: -1,
+      controlIndex: -1,
+      headerText: "守備位置",
+      tagName: "select",
+      type: "select-one",
+      name: "MemberScoreOfSyubi[1]",
+      id: null,
+      currentValue: "6",
+      currentLabel: "遊",
+    },
+    positionOptions: [
+      createPlayerOption("0", "-"),
+      createPlayerOption("1", "投"),
+      createPlayerOption("2", "捕"),
+      createPlayerOption("3", "一"),
+      createPlayerOption("4", "二"),
+      createPlayerOption("5", "三"),
+      createPlayerOption("6", "遊"),
+      createPlayerOption("7", "左"),
+      createPlayerOption("8", "中"),
+      createPlayerOption("9", "右"),
+    ],
     statFields: {
       rbi: {
         formIndex: 0,
@@ -203,6 +257,109 @@ describe("buildMappingPreview", () => {
     expect(preview.assignments[0].appearanceAssignments).toHaveLength(2);
     expect(preview.assignments[0].appearanceAssignments[0].targetOptionLabel).toBe("中安");
     expect(preview.assignments[0].appearanceAssignments[1].targetOptionLabel).toBe("ニゴ");
+    expect(isCommitReady(preview)).toBe(true);
+  });
+
+  it("resolves player and position selections for an empty target row", () => {
+    const source: BatterStat[] = [
+      {
+        playerName: "いわもん",
+        battingOrder: 7,
+        position: "左",
+        plateAppearances: 1,
+        atBats: 1,
+        runs: 0,
+        hits: 0,
+        rbi: 0,
+        doubles: 0,
+        triples: 0,
+        homeRuns: 0,
+        walks: 0,
+        hitByPitch: 0,
+        strikeouts: 0,
+        sacrificeBunts: 0,
+        sacrificeFlies: 0,
+        stolenBases: 0,
+        errors: 0,
+        plateAppearanceResults: [
+          {
+            appearanceIndex: 1,
+            rawText: "二ゴロ",
+            normalizedText: "二ゴロ",
+          },
+        ],
+      },
+    ];
+
+    const targetRow = createTargetRow({
+      rowIndex: 7,
+      lineupIndex: 7,
+      playerLabel: "-",
+      normalizedPlayerLabel: "",
+      selectedUserId: "0",
+      playerControl: {
+        ...createTargetRow().playerControl,
+        rowIndex: 7,
+        name: "MemberScoreOfUserId[7]",
+        currentValue: "0",
+        currentLabel: "-",
+      },
+      selectedPositionLabel: "-",
+      positionControl: {
+        ...createTargetRow().positionControl,
+        rowIndex: 7,
+        name: "MemberScoreOfSyubi[7]",
+        currentValue: "0",
+        currentLabel: "-",
+      },
+      statFields: {
+        rbi: {
+          ...createTargetRow().statFields.rbi,
+          rowIndex: 7,
+          name: "MemberScoreOfDaten[7]",
+        },
+        runs: {
+          ...createTargetRow().statFields.runs,
+          rowIndex: 7,
+          name: "MemberScoreOfTokuten[7]",
+        },
+        stolenBases: {
+          ...createTargetRow().statFields.stolenBases,
+          rowIndex: 7,
+          name: "MemberScoreOfTorui[7]",
+        },
+        errors: {
+          ...createTargetRow().statFields.errors,
+          rowIndex: 7,
+          name: "MemberScoreOfEr[7]",
+        },
+      },
+      appearanceFields: [
+        {
+          appearanceIndex: 1,
+          main: {
+            ...createTargetRow().appearanceFields[0].main,
+            rowIndex: 7,
+            name: "MemberScoreOf1[7]",
+            currentValue: "",
+            currentLabel: "-",
+          },
+          sub: null,
+          rbi: {
+            ...createTargetRow().appearanceFields[0].rbi,
+            rowIndex: 7,
+            name: "MemberScoreOf1_daten[7]",
+          },
+          rbiSub: null,
+        },
+      ],
+    });
+
+    const preview = buildMappingPreview(source, createTargetPreview([targetRow]));
+    expect(preview.assignments[0].targetPlayerLabel).toBe("[19]岩本");
+    expect(preview.assignments[0].targetLineupIndex).toBe(7);
+    expect(preview.assignments[0].playerSelection?.targetOptionValue).toBe("19");
+    expect(preview.assignments[0].positionSelection?.targetOptionLabel).toBe("左");
     expect(isCommitReady(preview)).toBe(true);
   });
 
@@ -405,6 +562,182 @@ describe("verifyAppliedMapping", () => {
               currentValue: "49",
               currentLabel: "ニゴ",
             },
+          },
+        ],
+      }),
+    ]);
+
+    expect(verifyAppliedMapping(mapping, verifiedPreview)).toEqual({
+      verified: true,
+      issues: [],
+    });
+  });
+
+  it("verifies using lineup index after an empty row becomes a named player", () => {
+    const source: BatterStat[] = [
+      {
+        playerName: "いわもん",
+        battingOrder: 7,
+        position: "左",
+        plateAppearances: 1,
+        atBats: 1,
+        runs: 0,
+        hits: 0,
+        rbi: 0,
+        doubles: 0,
+        triples: 0,
+        homeRuns: 0,
+        walks: 0,
+        hitByPitch: 0,
+        strikeouts: 0,
+        sacrificeBunts: 0,
+        sacrificeFlies: 0,
+        stolenBases: 0,
+        errors: 0,
+        plateAppearanceResults: [
+          {
+            appearanceIndex: 1,
+            rawText: "二ゴロ",
+            normalizedText: "二ゴロ",
+          },
+        ],
+      },
+    ];
+
+    const mapping = buildMappingPreview(
+      source,
+      createTargetPreview([
+        createTargetRow({
+          rowIndex: 7,
+          lineupIndex: 7,
+          playerLabel: "-",
+          normalizedPlayerLabel: "",
+          selectedUserId: "0",
+          playerControl: {
+            ...createTargetRow().playerControl,
+            rowIndex: 7,
+            name: "MemberScoreOfUserId[7]",
+            currentValue: "0",
+            currentLabel: "-",
+          },
+          selectedPositionLabel: "-",
+          positionControl: {
+            ...createTargetRow().positionControl,
+            rowIndex: 7,
+            name: "MemberScoreOfSyubi[7]",
+            currentValue: "0",
+            currentLabel: "-",
+          },
+          statFields: {
+            rbi: {
+              ...createTargetRow().statFields.rbi,
+              rowIndex: 7,
+              name: "MemberScoreOfDaten[7]",
+            },
+            runs: {
+              ...createTargetRow().statFields.runs,
+              rowIndex: 7,
+              name: "MemberScoreOfTokuten[7]",
+            },
+            stolenBases: {
+              ...createTargetRow().statFields.stolenBases,
+              rowIndex: 7,
+              name: "MemberScoreOfTorui[7]",
+            },
+            errors: {
+              ...createTargetRow().statFields.errors,
+              rowIndex: 7,
+              name: "MemberScoreOfEr[7]",
+            },
+          },
+          appearanceFields: [
+            {
+              appearanceIndex: 1,
+              main: {
+                ...createTargetRow().appearanceFields[0].main,
+                rowIndex: 7,
+                name: "MemberScoreOf1[7]",
+                currentValue: "",
+                currentLabel: "-",
+              },
+              sub: null,
+              rbi: {
+                ...createTargetRow().appearanceFields[0].rbi,
+                rowIndex: 7,
+                name: "MemberScoreOf1_daten[7]",
+              },
+              rbiSub: null,
+            },
+          ],
+        }),
+      ]),
+    );
+
+    const verifiedPreview = createTargetPreview([
+      createTargetRow({
+        rowIndex: 7,
+        lineupIndex: 7,
+        playerLabel: "[19]岩本",
+        normalizedPlayerLabel: "岩本",
+        selectedUserId: "19",
+        playerControl: {
+          ...createTargetRow().playerControl,
+          rowIndex: 7,
+          name: "MemberScoreOfUserId[7]",
+          currentValue: "19",
+          currentLabel: "[19]岩本",
+        },
+        selectedPositionLabel: "左",
+        positionControl: {
+          ...createTargetRow().positionControl,
+          rowIndex: 7,
+          name: "MemberScoreOfSyubi[7]",
+          currentValue: "7",
+          currentLabel: "左",
+        },
+        statFields: {
+          rbi: {
+            ...createTargetRow().statFields.rbi,
+            rowIndex: 7,
+            name: "MemberScoreOfDaten[7]",
+            currentValue: "0",
+          },
+          runs: {
+            ...createTargetRow().statFields.runs,
+            rowIndex: 7,
+            name: "MemberScoreOfTokuten[7]",
+            currentValue: "0",
+          },
+          stolenBases: {
+            ...createTargetRow().statFields.stolenBases,
+            rowIndex: 7,
+            name: "MemberScoreOfTorui[7]",
+            currentValue: "0",
+          },
+          errors: {
+            ...createTargetRow().statFields.errors,
+            rowIndex: 7,
+            name: "MemberScoreOfEr[7]",
+            currentValue: "0",
+          },
+        },
+        appearanceFields: [
+          {
+            appearanceIndex: 1,
+            main: {
+              ...createTargetRow().appearanceFields[0].main,
+              rowIndex: 7,
+              name: "MemberScoreOf1[7]",
+              currentValue: "49",
+              currentLabel: "ニゴ",
+            },
+            sub: null,
+            rbi: {
+              ...createTargetRow().appearanceFields[0].rbi,
+              rowIndex: 7,
+              name: "MemberScoreOf1_daten[7]",
+            },
+            rbiSub: null,
           },
         ],
       }),

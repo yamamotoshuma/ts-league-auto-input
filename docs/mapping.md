@@ -1,6 +1,6 @@
 # Mapping
 
-Observed on 2026-03-17. This document now reflects authenticated discovery of the actual Order Made batter table and the actual TS-League `gameof_edit.php` form.
+Observed on 2026-03-17 and updated on 2026-03-21. This document now reflects authenticated discovery of the actual Order Made batter table and the actual TS-League `gameof_edit.php` form.
 
 ## Normalized model
 
@@ -119,6 +119,8 @@ The code should normalize both source and target player identifiers before match
 - Collapse consecutive spaces
 - Remove full-width and half-width internal spaces for comparison
 - Lower sensitivity to punctuation variants where safe
+- Expand known nickname aliases where the team uses stable alternate labels
+  - confirmed live: `いわもん` -> `岩本`
 
 Do not silently drop semantically meaningful suffixes if doing so would increase collision risk.
 
@@ -146,6 +148,7 @@ Do not silently drop semantically meaningful suffixes if doing so would increase
 ## Commit safety rules
 
 - Commit only when every targeted write has a confident target row and every `plateAppearanceResults` entry resolves to a target option.
+- If the target row is still blank, commit only when both the player option and the position option are resolved for that lineup row.
 - If an existing target value is already compatible with the source event, keep the current value rather than overwriting it.
 - If an existing target value is incompatible and overwrite behavior is unclear, stop and require manual review.
 - If `runs` or `errors` remain unresolved because the source does not expose them, leave those fields untouched and continue only if all other writes are safe.
