@@ -24,12 +24,14 @@ async function main() {
       page,
       resolveSourceGameUrl(
         {
+          workflow: "batter",
           sourceGameId,
           sourceUrl,
           targetGameKey: "manual-check",
           targetGameDate: null,
           targetOpponent: null,
           targetVenue: null,
+          pitcherAllocationText: null,
           mode: "dry-run",
         },
         secrets.orderMade.baseUrl,
@@ -43,4 +45,3 @@ async function main() {
 }
 
 void main();
-

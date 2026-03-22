@@ -52,8 +52,8 @@ function createCandidateCauses(error: unknown): string[] {
     causes.push("ログイン失敗またはセッション切れの可能性があります");
   }
 
-  if (/table|batter table|DOM/i.test(message)) {
-    causes.push("ソース側の野手成績テーブル構造が想定と一致していない可能性があります");
+  if (/table|batter table|DOM|opponent batting|pitcher/i.test(message)) {
+    causes.push("取込元または公開試合ページのテーブル構造が想定と一致していない可能性があります");
   }
 
   if (/target game candidate|対象試合/i.test(message)) {
@@ -120,12 +120,14 @@ export class JobQueue {
 
     return this.enqueue(
       {
+        workflow: existing.workflow ?? "batter",
         sourceGameId: existing.sourceGameId,
         sourceUrl: existing.sourceUrl,
         targetGameKey: existing.targetGameKey,
         targetGameDate: existing.targetGameDate,
         targetOpponent: existing.targetOpponent,
         targetVenue: existing.targetVenue,
+        pitcherAllocationText: existing.pitcherAllocationText ?? null,
         mode: existing.mode,
       },
       existing.id,

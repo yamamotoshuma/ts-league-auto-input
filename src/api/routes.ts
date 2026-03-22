@@ -1,6 +1,6 @@
 import express from "express";
 import { DuplicateActiveJobError, JobNotFoundError } from "../infra/jsonJobStore";
-import type { JobInput, RunMode } from "../domain/types";
+import type { JobInput, RunMode, Workflow } from "../domain/types";
 import { JobQueue } from "../worker/jobQueue";
 
 function toNullableString(value: unknown): string | null {
@@ -16,18 +16,28 @@ function parseMode(value: unknown): RunMode {
   return value === "commit" ? "commit" : "dry-run";
 }
 
+function parseWorkflow(value: unknown): Workflow {
+  return value === "pitcher" ? "pitcher" : "batter";
+}
+
 function parseJobInput(body: unknown): JobInput {
   if (!body || typeof body !== "object") {
     throw new Error("リクエスト本文は JSON オブジェクトである必要があります");
   }
 
   const input = body as Record<string, unknown>;
+  const workflow = parseWorkflow(input.workflow);
   const sourceGameId = toNullableString(input.sourceGameId);
   const sourceUrl = toNullableString(input.sourceUrl);
   const targetGameKey = toNullableString(input.targetGameKey);
+  const pitcherAllocationText = toNullableString(input.pitcherAllocationText);
 
-  if (!sourceGameId && !sourceUrl) {
+  if (workflow === "batter" && !sourceGameId && !sourceUrl) {
     throw new Error("ソース試合 ID またはソース試合 URL を入力してください");
+  }
+
+  if (workflow === "pitcher" && !pitcherAllocationText) {
+    throw new Error("投手割当を1行以上入力してください");
   }
 
   if (!targetGameKey) {
@@ -35,12 +45,14 @@ function parseJobInput(body: unknown): JobInput {
   }
 
   return {
+    workflow,
     sourceGameId,
     sourceUrl,
     targetGameKey,
     targetGameDate: toNullableString(input.targetGameDate),
     targetOpponent: toNullableString(input.targetOpponent),
     targetVenue: toNullableString(input.targetVenue),
+    pitcherAllocationText,
     mode: parseMode(input.mode),
   };
 }

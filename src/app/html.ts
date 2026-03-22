@@ -1,4 +1,4 @@
-import type { JobRecord, JobStatus, RunMode } from "../domain/types";
+import type { JobRecord, JobStatus, RunMode, Workflow } from "../domain/types";
 
 export function escapeHtml(value: unknown): string {
   const text = String(value ?? "");
@@ -52,9 +52,13 @@ function modeLabel(mode: RunMode): string {
   return mode === "commit" ? "保存実行" : "確認実行";
 }
 
+function workflowLabel(workflow: Workflow | undefined): string {
+  return workflow === "pitcher" ? "投手成績" : "野手成績";
+}
+
 function renderRecentJobs(jobs: JobRecord[]): string {
   if (jobs.length === 0) {
-    return '<p class="empty-state">まだ実行履歴はありません。上のフォームから確認実行を行ってください。</p>';
+    return '<p class="empty-state">履歴はまだありません。</p>';
   }
 
   return `
@@ -64,6 +68,7 @@ function renderRecentJobs(jobs: JobRecord[]): string {
           <tr>
             <th>受付日時</th>
             <th>状態</th>
+            <th>種別</th>
             <th>実行方法</th>
             <th>取込元</th>
             <th>反映先試合</th>
@@ -77,8 +82,9 @@ function renderRecentJobs(jobs: JobRecord[]): string {
                 <tr>
                   <td data-label="受付日時">${escapeHtml(formatDateTime(job.createdAt))}</td>
                   <td data-label="状態"><span class="status-chip status-${escapeHtml(job.status)}">${escapeHtml(statusLabel(job.status))}</span></td>
+                  <td data-label="種別">${escapeHtml(workflowLabel(job.workflow))}</td>
                   <td data-label="実行方法"><span class="mode-chip mode-${escapeHtml(job.mode)}">${escapeHtml(modeLabel(job.mode))}</span></td>
-                  <td data-label="取込元">${escapeHtml(job.sourceUrl ?? job.sourceGameId ?? "-")}</td>
+                  <td data-label="取込元">${escapeHtml(job.workflow === "pitcher" ? "スカイツリーグ公開試合ページ" : job.sourceUrl ?? job.sourceGameId ?? "-")}</td>
                   <td data-label="反映先試合">${escapeHtml(job.targetGameKey)}</td>
                   <td data-label="詳細"><a class="text-link" href="/jobs/${encodeURIComponent(job.id)}">詳細を見る</a></td>
                 </tr>
@@ -104,16 +110,12 @@ export function renderLayout(title: string, body: string): string {
     <main class="shell">
       <header class="header-panel">
         <div class="header-copy">
-          <p class="eyebrow">ORDER MADE → スカイツリーグ</p>
-          <h1>野手成績自動反映ツール</h1>
-          <p class="header-lead">Order Made の試合ページから野手成績だけを取得し、スカイツリーグ管理画面へ反映します。</p>
+          <h1>試合データ反映</h1>
+          <p class="header-lead">野手・投手</p>
         </div>
-        <div class="header-actions">
-          <p class="header-note">まず確認実行、その後に保存実行。保存後は再読込して確認します。</p>
-          <nav class="header-nav">
-            <a href="/">トップ</a>
-          </nav>
-        </div>
+        <nav class="header-nav">
+          <a href="/">トップ</a>
+        </nav>
       </header>
       ${body}
     </main>
@@ -126,115 +128,171 @@ export function renderIndexPage(jobs: JobRecord[]): string {
   return renderLayout(
     "トップ",
     `
-      <section class="hero-board">
-        <div>
-          <p class="eyebrow">ブラウザ操作のみ</p>
-          <h2>試合ページを読み取り、スカイツリーグへ反映します</h2>
-          <p>まずは確認実行で抽出結果と入力予定値を確かめ、問題がなければ保存実行に進みます。失敗時はスクリーンショット、HTML、ログを残します。</p>
-        </div>
-        <div class="hero-stats">
-          <div class="hero-stat">
-            <span>通常操作</span>
-            <strong>ブラウザだけで完結</strong>
-          </div>
-          <div class="hero-stat">
-            <span>実行の流れ</span>
-            <strong>先に確認実行</strong>
-          </div>
-          <div class="hero-stat">
-            <span>保存後</span>
-            <strong>再読込して確認</strong>
-          </div>
-        </div>
-      </section>
-
-      <div class="page-grid">
+      <div class="page-stack">
         <section class="panel panel-main">
           <div class="section-head">
             <div>
-              <h2>試合を取り込む</h2>
-              <p>対象試合を特定できる情報を入力して開始します。最初は確認実行をおすすめします。</p>
+              <h2>新規実行</h2>
             </div>
           </div>
           <form id="job-form" class="job-form">
-            <label class="field">
-              <span class="field-label">ソース試合 ID</span>
-              <input name="sourceGameId" placeholder="例: 37">
-              <small>Order Made 側の試合 ID です。URL を入れる場合は空でも構いません。</small>
-            </label>
-            <label class="field field-wide">
-              <span class="field-label">ソース試合 URL</span>
-              <input name="sourceUrl" placeholder="例: https://ordermade.sakura.ne.jp/kanri/game/37">
-              <small>ID が分からない場合はこちらを入力します。</small>
-            </label>
-            <label class="field field-wide">
-              <span class="field-label">対象試合の識別キーワード</span>
-              <input name="targetGameKey" required placeholder="例: 3/7 9:00 光が丘公園 Re">
-              <small>試合一覧の行テキストに含まれる日付、球場、相手名をまとめて入れると安定します。</small>
-            </label>
-            <label class="field">
-              <span class="field-label">対象日</span>
-              <input name="targetGameDate" type="date" placeholder="2026-03-07">
-              <small>任意ですが、同日の複数試合がある場合に有効です。</small>
-            </label>
-            <label class="field">
-              <span class="field-label">対戦相手</span>
-              <input name="targetOpponent" placeholder="例: Re">
-              <small>試合一覧の相手名表記に合わせてください。</small>
-            </label>
-            <label class="field">
-              <span class="field-label">球場</span>
-              <input name="targetVenue" placeholder="例: 光が丘公園">
-              <small>球場名まで入れると誤マッチを避けやすくなります。</small>
-            </label>
-            <fieldset class="mode-switch">
+            <fieldset class="mode-switch mode-switch-workflow">
+              <legend>種別</legend>
+              <label class="mode-option">
+                <input type="radio" name="workflow" value="batter" checked>
+                <span>
+                  <strong>野手成績</strong>
+                  <small>オーダーメイド</small>
+                </span>
+              </label>
+              <label class="mode-option">
+                <input type="radio" name="workflow" value="pitcher">
+                <span>
+                  <strong>投手成績</strong>
+                  <small>公開試合ページ</small>
+                </span>
+              </label>
+            </fieldset>
+            <section class="workflow-panel workflow-panel-batter" data-workflow-section="batter">
+              <div class="workflow-intro">
+                <strong>野手成績</strong>
+                <span>オーダーメイドから取込</span>
+              </div>
+              <div class="workflow-grid">
+                <section class="form-card">
+                  <div class="card-head">
+                    <h3>取込元</h3>
+                  </div>
+                  <div class="workflow-block">
+                    <label class="field">
+                      <span class="field-label">ソース試合ID</span>
+                      <input name="sourceGameId" placeholder="例: 37">
+                    </label>
+                    <label class="field field-wide">
+                      <span class="field-label">ソース試合URL</span>
+                      <input name="sourceUrl" placeholder="例: https://ordermade.sakura.ne.jp/kanri/game/37">
+                    </label>
+                  </div>
+                </section>
+                <section class="form-card">
+                  <div class="card-head">
+                    <h3>反映先</h3>
+                  </div>
+                  <div class="workflow-block">
+                    <label class="field field-wide">
+                      <span class="field-label">対象試合</span>
+                      <input name="targetGameKey" required data-mirror-field placeholder="例: 3/7 9:00 光が丘公園 Re">
+                    </label>
+                    <label class="field">
+                      <span class="field-label">日付</span>
+                      <input name="targetGameDate" type="date" data-mirror-field placeholder="2026-03-07">
+                    </label>
+                    <label class="field">
+                      <span class="field-label">相手</span>
+                      <input name="targetOpponent" data-mirror-field placeholder="例: Re">
+                    </label>
+                    <label class="field field-wide">
+                      <span class="field-label">球場</span>
+                      <input name="targetVenue" data-mirror-field placeholder="例: 光が丘公園">
+                    </label>
+                  </div>
+                </section>
+              </div>
+            </section>
+            <section class="workflow-panel workflow-panel-pitcher" data-workflow-section="pitcher" hidden>
+              <div class="workflow-intro">
+                <strong>投手成績</strong>
+                <span>公開試合ページから配分</span>
+              </div>
+              <div class="workflow-grid">
+                <section class="form-card form-card-emphasis">
+                  <div class="card-head">
+                    <h3>投手割当</h3>
+                  </div>
+                  <input id="pitcher-allocation-text" name="pitcherAllocationText" type="hidden">
+                  <section class="pitcher-editor">
+                    <div class="pitcher-editor-head">
+                      <div>
+                        <span class="field-label">登板順</span>
+                        <small>投手名 / 回</small>
+                      </div>
+                      <button id="pitcher-row-add" class="secondary-button" type="button">行を追加</button>
+                    </div>
+                    <div id="pitcher-rows" class="pitcher-rows"></div>
+                  </section>
+                  <template id="pitcher-row-template">
+                    <div class="pitcher-row" data-pitcher-row>
+                      <div class="pitcher-row-index" data-pitcher-index></div>
+                      <label class="pitcher-cell">
+                        <span>投手名</span>
+                        <input type="text" data-pitcher-name placeholder="安楽">
+                      </label>
+                      <label class="pitcher-cell pitcher-cell-small">
+                        <span>回</span>
+                        <input type="number" min="0" step="1" inputmode="numeric" data-pitcher-innings placeholder="3">
+                      </label>
+                      <button class="ghost-button" type="button" data-pitcher-remove>削除</button>
+                    </div>
+                  </template>
+                </section>
+                <section class="form-card">
+                  <div class="card-head">
+                    <h3>反映先</h3>
+                  </div>
+                  <div class="workflow-block">
+                    <label class="field field-wide">
+                      <span class="field-label">対象試合</span>
+                      <input name="targetGameKey" required data-mirror-field placeholder="例: 3/7 9:00 光が丘公園 Re">
+                    </label>
+                    <label class="field">
+                      <span class="field-label">日付</span>
+                      <input name="targetGameDate" type="date" data-mirror-field placeholder="2026-03-07">
+                    </label>
+                    <label class="field">
+                      <span class="field-label">相手</span>
+                      <input name="targetOpponent" data-mirror-field placeholder="例: Re">
+                    </label>
+                    <label class="field field-wide">
+                      <span class="field-label">球場</span>
+                      <input name="targetVenue" data-mirror-field placeholder="例: 光が丘公園">
+                    </label>
+                  </div>
+                </section>
+              </div>
+            </section>
+            <fieldset class="mode-switch mode-switch-run">
               <legend>実行方法</legend>
               <label class="mode-option">
                 <input type="radio" name="mode" value="dry-run" checked>
                 <span>
                   <strong>確認実行</strong>
-                  <small>保存せず、抽出結果と入力予定値だけを確認します。</small>
+                  <small>保存しない</small>
                 </span>
               </label>
               <label class="mode-option">
                 <input type="radio" name="mode" value="commit">
                 <span>
                   <strong>保存実行</strong>
-                  <small>スカイツリーグに保存し、その後で反映結果を再確認します。</small>
+                  <small>保存する</small>
                 </span>
               </label>
             </fieldset>
             <div class="form-footer">
-              <div id="mode-notice" class="notice notice-info">確認実行では保存しません。</div>
+              <div id="mode-notice" class="notice notice-info">保存なし</div>
               <div class="actions">
-                <button id="job-submit-button" type="submit">取り込みを開始</button>
+                <button id="job-submit-button" type="submit">実行</button>
                 <span id="job-form-error" class="error-text" role="alert"></span>
               </div>
             </div>
           </form>
         </section>
-
-        <aside class="panel panel-side">
-          <div class="section-head">
-            <div>
-              <h2>注意事項</h2>
-              <p>保存実行を安全に行うための前提です。</p>
-            </div>
-          </div>
-          <ul class="info-list">
-            <li>CAPTCHA、2FA、想定外ページに遭遇した場合は停止します。</li>
-            <li>取込元にない値は無理に埋めず、空のまま扱います。</li>
-            <li>既に別の値が入っている欄は、互換と判断できない限り上書きしません。</li>
-            <li>失敗時は URL、直前の処理、スクリーンショット、HTML、ログを調査用ファイルとして残します。</li>
-          </ul>
-        </aside>
       </div>
 
       <section class="panel">
         <div class="section-head">
           <div>
-            <h2>最近の実行履歴</h2>
-            <p>画面を開き直した後も、直近の履歴を確認できます。</p>
+            <h2>実行履歴</h2>
+            <p>直近20件</p>
           </div>
         </div>
         ${renderRecentJobs(jobs)}
@@ -247,26 +305,25 @@ export function renderJobPage(job: JobRecord): string {
   return renderLayout(
     `ジョブ ${job.id}`,
     `
-      <section class="hero-board hero-board-compact">
-        <div>
-          <p class="eyebrow">ジョブ詳細</p>
-          <h2>ジョブ詳細</h2>
-          <p>状態、処理の記録、入力予定値、調査用ファイルをこの画面で確認できます。実行中は自動で更新します。</p>
-        </div>
-        <div class="hero-actions">
-          <div class="job-hero-meta">
-            <div class="hero-stat">
-              <span>ジョブ ID</span>
-              <strong><code>${escapeHtml(job.id)}</code></strong>
-            </div>
-            <div class="hero-stat">
-              <span>現在の状態</span>
-              <strong>${escapeHtml(statusLabel(job.status))}</strong>
-            </div>
+      <section class="panel panel-main">
+        <div class="section-head">
+          <div>
+            <h2>ジョブ詳細</h2>
+            <p>自動更新</p>
           </div>
           <form method="post" action="/api/jobs/${encodeURIComponent(job.id)}/retry" data-retry-form>
             <button type="submit">同条件で再実行</button>
           </form>
+        </div>
+        <div class="job-hero-meta">
+          <div class="hero-stat">
+            <span>ジョブID</span>
+            <strong><code>${escapeHtml(job.id)}</code></strong>
+          </div>
+          <div class="hero-stat">
+            <span>現在の状態</span>
+            <strong>${escapeHtml(statusLabel(job.status))}</strong>
+          </div>
         </div>
       </section>
 

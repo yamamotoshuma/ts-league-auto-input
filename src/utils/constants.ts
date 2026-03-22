@@ -1,4 +1,4 @@
-export const APP_NAME = "TS-League 野手成績自動反映ツール";
+export const APP_NAME = "TS-League 成績自動反映ツール";
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3000;
@@ -82,4 +82,4 @@ export const TARGET_GAME_LINK_SELECTORS = [
   'button[type="submit"]',
 ];
 
-export const APP_BASIC_AUTH_REALM = "TS-League 野手成績自動反映ツール";
+export const APP_BASIC_AUTH_REALM = "TS-League 成績自動反映ツール";

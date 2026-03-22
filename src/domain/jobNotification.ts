@@ -8,6 +8,7 @@ const STEP_LABELS: Record<string, string> = {
   "source.open": "取込元のページを開く",
   "target.open-list": "反映先の一覧を開く",
   "target.game-selected": "反映先の試合を特定",
+  "target.prepare-form": "反映先フォームを準備",
   "target.inspect-form": "反映先フォームを確認",
   "target.fill-form": "反映先フォームへ入力",
   "target.submit-form": "保存を実行",
@@ -42,7 +43,9 @@ function stepLabel(value: string | null | undefined): string {
 }
 
 function buildBaseLines(job: JobRecord): string[] {
+  const workflow = job.workflow ?? "batter";
   return [
+    `処理種別: ${workflow === "pitcher" ? "投手成績" : "野手成績"}`,
     `実行方法: ${modeLabel(job.mode)}`,
     `試合日: ${formatDate(job.targetGameDate)}`,
     `対戦相手: ${job.targetOpponent ?? "未指定"}`,
@@ -54,7 +57,7 @@ function buildBaseLines(job: JobRecord): string[] {
 
 export function buildJobStartedMessage(job: JobRecord): string {
   return [
-    "【スカイツリーグ野手成績自動反映】",
+    "【スカイツリーグ成績自動反映】",
     "ジョブを開始しました",
     ...buildBaseLines(job),
   ].join("\n");
@@ -62,7 +65,7 @@ export function buildJobStartedMessage(job: JobRecord): string {
 
 export function buildJobSucceededMessage(job: JobRecord, resultSummary: JobResultSummary | null): string {
   return [
-    "【スカイツリーグ野手成績自動反映】",
+    "【スカイツリーグ成績自動反映】",
     "ジョブが完了しました",
     ...buildBaseLines(job),
     `取得した選手数: ${resultSummary?.sourcePlayerCount ?? "-"}`,
@@ -74,7 +77,7 @@ export function buildJobSucceededMessage(job: JobRecord, resultSummary: JobResul
 
 export function buildJobFailedMessage(job: JobRecord, errorSummary: JobErrorSummary | null): string {
   return [
-    "【スカイツリーグ野手成績自動反映】",
+    "【スカイツリーグ成績自動反映】",
     "ジョブでエラーが発生しました",
     ...buildBaseLines(job),
     `発生工程: ${stepLabel(errorSummary?.step)}`,

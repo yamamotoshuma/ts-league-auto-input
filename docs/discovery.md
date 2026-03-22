@@ -197,6 +197,71 @@ Confirmed against the approved live match `3/7/9:00-光が丘公園`.
   - row 8 `[61]戸嶋`
   - row 9 `[00]助っ人1`
 
+### TS-League pitcher edit page
+
+- The pitcher-edit navigation on the authenticated game list is a normal HTML `POST` form:
+  - action: `gamedf_edit.php`
+  - hidden inputs observed on live rows:
+    - `Id`
+    - `MemberScoreDfGameYear`
+    - `MemberScoreDfGameYear2`
+    - `GameDay`
+    - `GameTypeId`
+    - `CmtCk`
+- The pitcher edit page itself is also a normal HTML form:
+  - page URL: `https://ts-league.com/team/order-made/gamedf_edit.php`
+  - method: `post`
+  - action: `gamedf_edit_complete.php`
+  - hidden inputs observed:
+    - `bcount`
+    - `Id`
+    - `GameDay`
+    - `GameTypeId`
+    - `MemberScoreDfGameYear`
+    - `MemberScoreDfGameYear2`
+    - `GroupLeagueType`
+- Repeated pitcher row controls observed live:
+  - `select[name="MemberScoreDfUserId[ROW]"]`
+  - `input[name="MemberScoreDfIning[ROW]"]`
+  - `input[name="MemberScoreDfKaisu[ROW]"]`
+  - `input[name="MemberScoreDfJiseki[ROW]"]`
+  - `input[name="MemberScoreDfSiten[ROW]"]`
+  - `input[name="MemberScoreDfDatusansin[ROW]"]`
+  - `input[name="MemberScoreDfSikyu[ROW]"]`
+  - `input[name="MemberScoreDfSisikyu[ROW]"]`
+  - `input[name="MemberScoreDfHianda[ROW]"]`
+  - `input[name="MemberScoreDfHiHr[ROW]"]`
+  - `input[name="MemberScoreDfBoutou[ROW]"]`
+  - `input[name="MemberScoreDfBok[ROW]"]`
+  - `select[name="MemberScoreDfsyouhai[ROW]"]`
+  - `select[name="MemberScoreDfKantou[ROW]"]`
+- On the empty `2026-03-21 プレアデス` pitcher form:
+  - `bcount=1`
+  - row 1 was blank
+  - a visible `追加` control existed for increasing row count
+
+### Public TS-League game page as pitcher source
+
+- The public result page URL pattern is:
+  - `https://ts-league.com/game/<year>/index.php?gameid=<Id>`
+- Example confirmed live:
+  - `https://ts-league.com/game/2026/index.php?gameid=14248`
+- The public page contains:
+  - inning score table
+  - both teams' batting detail tables
+  - both teams' pitcher summary tables
+- At least on `2026-03-07 Ｒｅ`, the public batting detail is rendered as one combined `打撃成績一覧` table:
+  - ORDERMADE batting rows
+  - `先攻` / `後攻` score rows
+  - a repeated batting header row
+  - opponent batting rows
+- For pitcher automation, the usable source is:
+  - the opponent batting detail table
+  - plus the inning score table for opponent runs by inning
+- On `2026-03-07 Ｒｅ`, opponent batting rows were present and consistent with the already-saved pitcher totals.
+- On `2026-03-21 プレアデス`, the page still showed `まだ試合情報が登録されていません。` and the opponent batting table was not present.
+- This means pitcher automation must fail closed when the public page does not yet expose opponent batting detail.
+
 ## Unauthenticated screen transitions
 
 ### Order Made
@@ -264,6 +329,8 @@ Selector candidates:
 
 - Whether `MemberScoreOfTokuten` and `MemberScoreOfEr` are ever required for matches where the source cannot provide those values
 - Whether row 10 in `bcount=10` is intended for a bench player, helper row, or an optional substitute slot
+- Whether partial-inning pitcher allocation can be reconstructed safely from the public batting table when a pitcher changes mid-inning
+- Whether the `追加` behavior on `gamedf_edit.php` differs by game type or league settings
 
 ## Known form details
 
@@ -273,6 +340,7 @@ Selector candidates:
 | TS-League login | `POST` | `../../pass/pass_check.php` | `url=order-made` | No JS observed on the login page |
 | Order Made game edit/view | `GET` after authenticated login | `/kanri/game/:id` | Laravel session + CSRF on login page | Batter game page itself rendered as normal HTML |
 | TS-League batter entry/save | `POST` | `gameof_edit.php` -> `gameof_edit_complete.php` -> `complete.php` | `Id`, `GameDay`, `MemberScoreOfGameYear`, `GameTypeId`, `GroupLeagueType`, `bcount` | No XHR observed during page discovery; standard form flow |
+| TS-League pitcher entry/save | `POST` | `gamedf_edit.php` -> `gamedf_edit_complete.php` -> `complete.php` | `Id`, `GameDay`, `MemberScoreDfGameYear`, `GameTypeId`, `GroupLeagueType`, `bcount` | No XHR observed during page discovery; standard form flow |
 
 ## Required authenticated discovery still pending
 
@@ -281,6 +349,7 @@ These items still deserve continued observation as more matches are tested:
 1. Whether the target site recalculates summary values or requires explicit `runs/errors/steals` inputs in edge cases
 2. Whether row 10 must remain blank or must be normalized explicitly
 3. Whether there are match types whose form structure differs from the `gameof_edit.php` page observed here
+4. Whether there are match types whose `gamedf_edit.php` structure differs from the observed pitcher form
 
 ## Minimum user input identified so far
 
@@ -295,6 +364,7 @@ Now confirmed as useful target-game identification inputs:
 - `targetGameDate`
 - `targetVenue`
 - `targetOpponent`
+- For pitcher mode: manual pitcher allocation text such as `安楽 3回`
 
 Observed evidence:
 
@@ -314,6 +384,8 @@ Implementation implication:
 - Missing local secrets will block both authenticated discovery and live execution
 - Protected DOM can change without notice; selector strategies must keep ordered candidates rather than a single hard-coded selector
 - TS-League batting edit is form-name-pattern driven rather than header-text driven
+- TS-League pitcher edit is also form-name-pattern driven and may require row expansion via `追加`
+- Public opponent batting data may be absent even when the target edit form exists
 
 ## Safety constraints derived from discovery
 
@@ -338,3 +410,5 @@ The application should save the following under `artifacts/` per job:
 2. Can `runs` and `errors` be derived server-side if left unchanged, or must the client supply them explicitly?
 3. Is row 10 in `bcount=10` a substitute slot that must be normalized for all games?
 4. Can existing entered batter stats be safely detected before overwrite in cases where some slots are already non-zero?
+5. Can partial-inning pitcher changes be reconstructed safely enough for automatic stat splitting?
+6. Are `自責`, `暴投`, `ボーク`, `勝敗`, and `完投系` ever derivable from public batting detail alone, or must they remain manual?

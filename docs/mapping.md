@@ -154,3 +154,75 @@ Do not silently drop semantically meaningful suffixes if doing so would increase
 - If `runs` or `errors` remain unresolved because the source does not expose them, leave those fields untouched and continue only if all other writes are safe.
 - Save success should be verified by both completion-page detection and by reopening the same target game to compare persisted values.
 - If any required mapping remains unresolved, downgrade the run to an effective dry-run and report why.
+
+## Pitcher workflow
+
+Observed on 2026-03-21 from the live `gamedf_edit.php` form and the public `game/<year>/index.php?gameid=<Id>` page.
+
+### Normalized pitcher input
+
+Pitcher mode does not scrape pitcher identity. The user supplies it manually.
+
+```ts
+type PitcherAllocation = {
+  order: number;
+  pitcherName: string;
+  innings: number;
+  outs: number;
+};
+```
+
+Current supported examples:
+
+- `安楽 3回`
+- `藤田 3回`
+- `安楽 3.1`
+- `安楽 3回1/3`
+
+Important safety rule:
+
+- Partial innings are parsed but not auto-committed yet.
+- The current implementation only treats whole-inning allocation as commit-ready.
+
+### Public-source to target-field mapping
+
+Observed public-page nuance:
+
+- The public `打撃成績一覧` may contain both teams in one table, with `先攻` / `後攻` score rows in the middle.
+- Pitcher mode therefore first isolates the opponent batting block, then aggregates inning columns only from that block.
+
+| Target field | Source policy | Current automation policy |
+| --- | --- | --- |
+| `MemberScoreDfUserId[ROW]` | Manual UI input `pitcherName` | Resolve against target select options and fill when the row is blank |
+| `MemberScoreDfIning[ROW]` | Manual UI input `innings` | Fill directly |
+| `MemberScoreDfKaisu[ROW]` | Manual UI input `outs` | Fill directly |
+| `MemberScoreDfSiten[ROW]` | Sum opponent runs by inning from the public score table | Fill only when inning-level runs can be read safely |
+| `MemberScoreDfDatusansin[ROW]` | Count opponent batting events containing `三振` / `振逃` in covered innings | Fill automatically |
+| `MemberScoreDfSikyu[ROW]` | Count opponent batting events containing `四球` / `敬遠` in covered innings | Fill automatically |
+| `MemberScoreDfSisikyu[ROW]` | Count opponent batting events containing `死球` in covered innings | Fill automatically |
+| `MemberScoreDfHianda[ROW]` | Count opponent batting events classified as hits in covered innings | Fill automatically |
+| `MemberScoreDfHiHr[ROW]` | Count opponent batting events classified as home runs in covered innings | Fill automatically |
+| `MemberScoreDfJiseki[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
+| `MemberScoreDfBoutou[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
+| `MemberScoreDfBok[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
+| `MemberScoreDfsyouhai[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
+| `MemberScoreDfKantou[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
+
+### Pitcher event classification rules
+
+- `四球`, `敬遠` => walk
+- `死球` => hit by pitch
+- `三振`, `空三振`, `見三振`, `振逃` => strikeout
+- `安打`, `内安`, `投安`, `捕安`, `一安`, `ニ安`, `三安`, `遊安`, `左安`, `中安`, `右安`, `安２`, `安３`, `本塁打`, `左本`, `中本`, `右本` => hit
+- Home-run labels count as both:
+  - hit
+  - home run
+
+### Pitcher commit safety rules
+
+- Commit only when every input pitcher line maps to a target row.
+- If the target row already has a different pitcher selected, stop and require review.
+- If a target numeric field already contains a different value, stop and require review.
+- If the public page does not expose the opponent batting detail table, stop and require review.
+- If the user enters any partial-inning allocation, keep the run as dry-run only.
+- Save success must be verified by reopening `gamedf_edit.php` and checking the persisted values.

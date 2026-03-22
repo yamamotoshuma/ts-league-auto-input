@@ -12,6 +12,11 @@
     commit: "保存実行",
   };
 
+  const WORKFLOW_LABELS = {
+    batter: "野手成績",
+    pitcher: "投手成績",
+  };
+
   const LEVEL_LABELS = {
     info: "情報",
     warn: "注意",
@@ -33,21 +38,13 @@
     "source.open": "取込元のページを開く",
     "target.open-list": "反映先の一覧を開く",
     "target.game-selected": "反映先の試合を特定",
+    "target.prepare-form": "反映先フォームを準備",
     "target.inspect-form": "反映先フォームを確認",
     "target.fill-form": "反映先フォームへ入力",
     "target.submit-form": "保存を実行",
     "target.submit-verified": "完了画面を確認",
     "target.verify-saved": "保存結果を再確認",
     "notify.line": "LINE通知",
-  };
-
-  const RESULT_LABELS = {
-    sourcePlayerCount: "取得した選手数",
-    matchedPlayers: "対応できた人数",
-    unmappedPlayers: "対応できなかった人数",
-    saveAttempted: "保存処理を行ったか",
-    saved: "保存完了を確認したか",
-    targetGameUrl: "反映先ページ",
   };
 
   function escapeHtml(value) {
@@ -82,6 +79,21 @@
 
   function labelOf(map, value) {
     return map[value] || value || "-";
+  }
+
+  function getWorkflow(job) {
+    return job.workflow || job.preview?.workflow || "batter";
+  }
+
+  function resultLabelsForWorkflow(workflow) {
+    return {
+      sourcePlayerCount: workflow === "pitcher" ? "入力した投手数" : "取得した選手数",
+      matchedPlayers: workflow === "pitcher" ? "対応できた投手数" : "対応できた人数",
+      unmappedPlayers: workflow === "pitcher" ? "対応できなかった投手数" : "対応できなかった人数",
+      saveAttempted: "保存処理を行ったか",
+      saved: "保存完了を確認したか",
+      targetGameUrl: "反映先ページ",
+    };
   }
 
   function renderStatusChip(status) {
@@ -195,6 +207,176 @@
                     <td data-label="盗塁">${escapeHtml(stat.stolenBases ?? "-")}</td>
                     <td data-label="失策">${escapeHtml(stat.errors ?? "未取得")}</td>
                     <td data-label="打席結果"><div class="tag-list">${formatPlateAppearances(stat.plateAppearanceResults)}</div></td>
+                  </tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderPitcherAllocations(preview) {
+    const allocations = preview?.pitcher?.allocations ?? [];
+    if (allocations.length === 0) {
+      return renderEmpty("投手割当はまだありません。");
+    }
+
+    return `<ul class="warning-list">${allocations
+      .map((allocation) => {
+        const suffix = allocation.outs > 0 ? `${allocation.innings}回${allocation.outs}/3` : `${allocation.innings}回`;
+        return `<li>${escapeHtml(`${allocation.order}. ${allocation.pitcherName} ${suffix}`)}</li>`;
+      })
+      .join("")}</ul>`;
+  }
+
+  function renderPitcherSource(preview) {
+    const source = preview?.pitcher?.source;
+    if (!source) {
+      return renderEmpty("公開試合ページの解析結果はまだありません。");
+    }
+
+    if (!source.innings || source.innings.length === 0) {
+      return renderEmpty("相手打撃成績をまだ抽出できていません。");
+    }
+
+    return `
+      <div class="summary-banner">
+        <div><strong>公開ページ</strong><span>${escapeHtml(source.sourceUrl)}</span></div>
+        <div><strong>対象相手</strong><span>${escapeHtml(source.opponentTeam ?? "未指定")}</span></div>
+        <div><strong>打撃表</strong><span>${escapeHtml(source.selectedTableIndex ?? "未検出")}</span></div>
+        <div><strong>スコア表</strong><span>${escapeHtml(source.scoreboardTableIndex ?? "未検出")}</span></div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>回</th>
+              <th>失点</th>
+              <th>被安打</th>
+              <th>被本塁打</th>
+              <th>奪三振</th>
+              <th>与四球</th>
+              <th>与死球</th>
+              <th>解析イベント</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${source.innings
+              .map(
+                (inning) => `
+                  <tr>
+                    <td data-label="回">${escapeHtml(inning.inning)}</td>
+                    <td data-label="失点">${escapeHtml(inning.runsAllowed ?? "未取得")}</td>
+                    <td data-label="被安打">${escapeHtml(inning.hitsAllowed)}</td>
+                    <td data-label="被本塁打">${escapeHtml(inning.homeRunsAllowed)}</td>
+                    <td data-label="奪三振">${escapeHtml(inning.strikeouts)}</td>
+                    <td data-label="与四球">${escapeHtml(inning.walks)}</td>
+                    <td data-label="与死球">${escapeHtml(inning.hitByPitch)}</td>
+                    <td data-label="解析イベント">${escapeHtml(inning.rawEvents.join(" / ") || "-")}</td>
+                  </tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderPitcherMapping(preview) {
+    const mapping = preview?.pitcher?.mapping;
+    const assignments = mapping?.assignments ?? [];
+    if (assignments.length === 0) {
+      return renderEmpty("投手の対応付け結果はまだありません。");
+    }
+
+    return `
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>入力投手</th>
+              <th>担当回</th>
+              <th>対象投手</th>
+              <th>入力予定値</th>
+              <th>注意事項</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${assignments
+              .map(
+                (assignment) => `
+                  <tr>
+                    <td data-label="入力投手">${escapeHtml(assignment.allocation.pitcherName)}</td>
+                    <td data-label="担当回">${escapeHtml(`${assignment.inningStart} - ${assignment.inningEnd}回`)}</td>
+                    <td data-label="対象投手">${escapeHtml(assignment.targetPitcherLabel || "未対応")}</td>
+                    <td data-label="入力予定値">${escapeHtml(
+                      [
+                        `回 ${assignment.derivedStats.innings}`,
+                        `アウト ${assignment.derivedStats.outs}`,
+                        assignment.derivedStats.runsAllowed === null ? null : `失点 ${assignment.derivedStats.runsAllowed}`,
+                        `奪三振 ${assignment.derivedStats.strikeouts}`,
+                        `与四球 ${assignment.derivedStats.walks}`,
+                        `与死球 ${assignment.derivedStats.hitByPitch}`,
+                        `被安打 ${assignment.derivedStats.hitsAllowed}`,
+                        `被本塁打 ${assignment.derivedStats.homeRunsAllowed}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" / "),
+                    )}</td>
+                    <td data-label="注意事項">${escapeHtml((assignment.warnings ?? []).join(" / ") || "なし")}</td>
+                  </tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderPitcherTargetPreview(preview) {
+    const target = preview?.pitcher?.target;
+    if (!target) {
+      return renderEmpty("反映先フォームの情報はまだありません。");
+    }
+
+    return `
+      <div class="summary-banner">
+        <div><strong>反映先ページ</strong><span>${escapeHtml(target.pageUrl)}</span></div>
+        <div><strong>送信先</strong><span>${escapeHtml(target.action ?? "不明")} / ${escapeHtml(target.method ?? "不明")}</span></div>
+        <div><strong>対象行数</strong><span>${escapeHtml(target.pitcherRows.length)}</span></div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>行</th>
+              <th>投手</th>
+              <th>回</th>
+              <th>アウト</th>
+              <th>失点</th>
+              <th>奪三振</th>
+              <th>与四球</th>
+              <th>与死球</th>
+              <th>被安打</th>
+              <th>被本塁打</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${target.pitcherRows
+              .map(
+                (row) => `
+                  <tr>
+                    <td data-label="行">${escapeHtml(row.pitcherIndex ?? "-")}</td>
+                    <td data-label="投手">${escapeHtml(row.pitcherLabel || "-")}</td>
+                    <td data-label="回">${escapeHtml(row.statFields.innings?.currentValue ?? "-")}</td>
+                    <td data-label="アウト">${escapeHtml(row.statFields.outs?.currentValue ?? "-")}</td>
+                    <td data-label="失点">${escapeHtml(row.statFields.runsAllowed?.currentValue ?? "-")}</td>
+                    <td data-label="奪三振">${escapeHtml(row.statFields.strikeouts?.currentValue ?? "-")}</td>
+                    <td data-label="与四球">${escapeHtml(row.statFields.walks?.currentValue ?? "-")}</td>
+                    <td data-label="与死球">${escapeHtml(row.statFields.hitByPitch?.currentValue ?? "-")}</td>
+                    <td data-label="被安打">${escapeHtml(row.statFields.hitsAllowed?.currentValue ?? "-")}</td>
+                    <td data-label="被本塁打">${escapeHtml(row.statFields.homeRunsAllowed?.currentValue ?? "-")}</td>
                   </tr>`,
               )
               .join("")}
@@ -385,6 +567,7 @@
 
   function renderPreviewState(job) {
     const preview = job.preview;
+    const workflow = getWorkflow(job);
     if (!preview) {
       return renderEmpty("実行内容の確認結果はまだありません。");
     }
@@ -396,6 +579,7 @@
     return `
       <div class="summary-banner">
         <div><strong>状態</strong><span>${renderStatusChip(job.status)}</span></div>
+        <div><strong>種別</strong><span>${escapeHtml(labelOf(WORKFLOW_LABELS, workflow))}</span></div>
         <div><strong>実行方法</strong><span>${renderModeChip(job.mode)}</span></div>
         <div><strong>保存実行の可否</strong><span>${commitState}</span></div>
         <div><strong>現在の工程</strong><span>${escapeHtml(labelOf(STEP_LABELS, job.lastStep ?? "未設定"))}</span></div>
@@ -404,13 +588,20 @@
   }
 
   function renderJob(job) {
+    const workflow = getWorkflow(job);
+    const resultLabels = resultLabelsForWorkflow(workflow);
+    const sourceDisplay =
+      workflow === "pitcher"
+        ? job.preview?.pitcher?.source?.sourceUrl || "スカイツリーグ公開試合ページ"
+        : job.sourceUrl || job.sourceGameId || "-";
+
     return `
       ${renderPreviewState(job)}
       <div class="detail-grid">
         <div class="detail-main">
           <section class="subcard">
             <h3>実行結果の要約</h3>
-            ${renderKeyValueRows(job.resultSummary, RESULT_LABELS)}
+            ${renderKeyValueRows(job.resultSummary, resultLabels)}
           </section>
           <section class="subcard">
             <h3>エラーの内容</h3>
@@ -421,17 +612,25 @@
             ${renderLogs(job.logs)}
           </section>
           <section class="subcard">
-            <h3>取込元の野手成績</h3>
-            ${renderSourceStats(job.preview)}
+            <h3>${escapeHtml(workflow === "pitcher" ? "投手割当" : "取込元の野手成績")}</h3>
+            ${workflow === "pitcher" ? renderPitcherAllocations(job.preview) : renderSourceStats(job.preview)}
           </section>
           <section class="subcard">
-            <h3>選手の対応付け</h3>
-            ${renderMapping(job.preview)}
+            <h3>${escapeHtml(workflow === "pitcher" ? "相手打撃成績の解析結果" : "選手の対応付け")}</h3>
+            ${workflow === "pitcher" ? renderPitcherSource(job.preview) : renderMapping(job.preview)}
           </section>
           <section class="subcard">
-            <h3>反映先フォームの内容</h3>
-            ${renderTargetPreview(job.preview)}
+            <h3>${escapeHtml(workflow === "pitcher" ? "投手成績の入力予定" : "反映先フォームの内容")}</h3>
+            ${workflow === "pitcher" ? renderPitcherMapping(job.preview) : renderTargetPreview(job.preview)}
           </section>
+          ${
+            workflow === "pitcher"
+              ? `<section class="subcard">
+                  <h3>反映先投手フォームの内容</h3>
+                  ${renderPitcherTargetPreview(job.preview)}
+                </section>`
+              : ""
+          }
         </div>
         <aside class="detail-side">
           <section class="subcard">
@@ -440,8 +639,9 @@
               <div><dt>作成日時</dt><dd>${escapeHtml(formatDateTime(job.createdAt))}</dd></div>
               <div><dt>開始日時</dt><dd>${escapeHtml(formatDateTime(job.startedAt))}</dd></div>
               <div><dt>終了日時</dt><dd>${escapeHtml(formatDateTime(job.finishedAt))}</dd></div>
+              <div><dt>種別</dt><dd>${escapeHtml(labelOf(WORKFLOW_LABELS, workflow))}</dd></div>
               <div><dt>実行方法</dt><dd>${escapeHtml(labelOf(MODE_LABELS, job.mode))}</dd></div>
-              <div><dt>取込元</dt><dd>${escapeHtml(job.sourceUrl ?? job.sourceGameId ?? "-")}</dd></div>
+              <div><dt>取込元</dt><dd>${escapeHtml(sourceDisplay)}</dd></div>
               <div><dt>反映先試合</dt><dd>${escapeHtml(job.targetGameKey)}</dd></div>
             </dl>
           </section>
@@ -464,15 +664,227 @@
       return;
     }
 
-    const mode = new FormData(form).get("mode");
+    const formData = new FormData(form);
+    const mode = formData.get("mode");
     if (mode === "commit") {
       notice.className = "notice notice-warning";
-      notice.textContent = "保存実行ではスカイツリーグに保存し、その後で対象試合を開き直して結果を確認します。";
+      notice.textContent = "保存して確認";
       return;
     }
 
     notice.className = "notice notice-info";
-    notice.textContent = "確認実行では保存せず、抽出結果と入力予定値だけを確認します。";
+    notice.textContent = "確認のみ";
+  }
+
+  function updateWorkflowSections(form) {
+    if (!form) {
+      return;
+    }
+
+    const workflow = new FormData(form).get("workflow") || "batter";
+    form.querySelectorAll("[data-workflow-section]").forEach(function (section) {
+      const sectionWorkflow = section.getAttribute("data-workflow-section");
+      const isActive = sectionWorkflow === workflow;
+      section.hidden = !isActive;
+      section.querySelectorAll("input, select, textarea, button").forEach(function (field) {
+        field.disabled = !isActive;
+      });
+    });
+
+    if (workflow === "pitcher") {
+      ensurePitcherRows(form);
+    }
+  }
+
+  function syncMirroredField(form, sourceField) {
+    if (!sourceField || !sourceField.name || !sourceField.hasAttribute("data-mirror-field")) {
+      return;
+    }
+
+    form.querySelectorAll("[data-mirror-field]").forEach(function (field) {
+      if (field === sourceField || field.name !== sourceField.name) {
+        return;
+      }
+
+      field.value = sourceField.value;
+    });
+  }
+
+  function updateSelectedModeOptions(form) {
+    form.querySelectorAll(".mode-option").forEach(function (option) {
+      const input = option.querySelector("input");
+      option.toggleAttribute("data-selected", Boolean(input?.checked));
+    });
+  }
+
+  function parsePitcherAllocationText(text) {
+    return String(text || "")
+      .split(/\r?\n/)
+      .map(function (line) {
+        return line.trim();
+      })
+      .filter(Boolean)
+      .map(function (line) {
+        const match = line.match(/^(.+?)\s+(\d+)(?:回)?$/);
+        if (!match) {
+          return { pitcherName: line, innings: "" };
+        }
+
+        return {
+          pitcherName: match[1].trim(),
+          innings: match[2].trim(),
+        };
+      });
+  }
+
+  function getPitcherEditorElements(form) {
+    return {
+      rowsRoot: form.querySelector("#pitcher-rows"),
+      template: form.querySelector("#pitcher-row-template"),
+      hiddenInput: form.querySelector("#pitcher-allocation-text"),
+      addButton: form.querySelector("#pitcher-row-add"),
+    };
+  }
+
+  function listPitcherRows(form) {
+    return Array.from(form.querySelectorAll("[data-pitcher-row]"));
+  }
+
+  function updatePitcherRowIndices(form) {
+    listPitcherRows(form).forEach(function (row, index) {
+      const marker = row.querySelector("[data-pitcher-index]");
+      if (marker) {
+        marker.textContent = String(index + 1);
+      }
+    });
+  }
+
+  function createPitcherRow(form, values) {
+    const elements = getPitcherEditorElements(form);
+    if (!elements.rowsRoot || !elements.template) {
+      return null;
+    }
+
+    const fragment = elements.template.content.cloneNode(true);
+    const row = fragment.querySelector("[data-pitcher-row]");
+    if (!row) {
+      return null;
+    }
+
+    const nameInput = row.querySelector("[data-pitcher-name]");
+    const inningsInput = row.querySelector("[data-pitcher-innings]");
+    if (nameInput) {
+      nameInput.value = values?.pitcherName || "";
+    }
+    if (inningsInput) {
+      inningsInput.value = values?.innings || "";
+    }
+
+    elements.rowsRoot.appendChild(fragment);
+    updatePitcherRowIndices(form);
+    return elements.rowsRoot.lastElementChild;
+  }
+
+  function ensurePitcherRows(form) {
+    if (listPitcherRows(form).length === 0) {
+      createPitcherRow(form);
+    }
+  }
+
+  function syncPitcherAllocation(form) {
+    const elements = getPitcherEditorElements(form);
+    if (!elements.hiddenInput) {
+      return { isValid: true, hasAllocations: false };
+    }
+
+    const allocations = listPitcherRows(form)
+      .map(function (row) {
+        const nameInput = row.querySelector("[data-pitcher-name]");
+        const inningsInput = row.querySelector("[data-pitcher-innings]");
+        const allocation = {
+          pitcherName: String(nameInput?.value || "").trim(),
+          innings: String(inningsInput?.value || "").trim(),
+        };
+        const isFilled = allocation.pitcherName || allocation.innings;
+        const isIncomplete = isFilled && (!allocation.pitcherName || !allocation.innings);
+        row.toggleAttribute("data-invalid", Boolean(isIncomplete));
+        return allocation;
+      })
+      .filter(function (allocation) {
+        return allocation.pitcherName || allocation.innings;
+      });
+
+    const hasIncomplete = allocations.some(function (allocation) {
+      return !allocation.pitcherName || !allocation.innings;
+    });
+
+    if (hasIncomplete) {
+      elements.hiddenInput.value = "";
+      return {
+        isValid: false,
+        hasAllocations: true,
+        message: "投手名と回を両方入力してください。",
+      };
+    }
+
+    elements.hiddenInput.value = allocations
+      .map(function (allocation) {
+        return allocation.pitcherName + " " + allocation.innings + "回";
+      })
+      .join("\n");
+
+    return {
+      isValid: true,
+      hasAllocations: allocations.length > 0,
+    };
+  }
+
+  function initPitcherAllocationEditor(form, errorElement) {
+    const elements = getPitcherEditorElements(form);
+    if (!elements.rowsRoot || !elements.template || !elements.hiddenInput || !elements.addButton) {
+      return;
+    }
+
+    const initialRows = parsePitcherAllocationText(elements.hiddenInput.value);
+    if (initialRows.length > 0) {
+      initialRows.forEach(function (row) {
+        createPitcherRow(form, row);
+      });
+    } else {
+      createPitcherRow(form);
+    }
+
+    elements.addButton.addEventListener("click", function () {
+      const row = createPitcherRow(form);
+      if (row) {
+        const firstInput = row.querySelector("input");
+        firstInput?.focus();
+      }
+      syncPitcherAllocation(form);
+    });
+
+    elements.rowsRoot.addEventListener("click", function (event) {
+      const button = event.target.closest("[data-pitcher-remove]");
+      if (!button) {
+        return;
+      }
+
+      const row = button.closest("[data-pitcher-row]");
+      row?.remove();
+      ensurePitcherRows(form);
+      updatePitcherRowIndices(form);
+      syncPitcherAllocation(form);
+      if (errorElement && errorElement.textContent === "投手名と回を両方入力してください。") {
+        errorElement.textContent = "";
+      }
+    });
+
+    elements.rowsRoot.addEventListener("input", function () {
+      syncPitcherAllocation(form);
+      if (errorElement && errorElement.textContent === "投手名と回を両方入力してください。") {
+        errorElement.textContent = "";
+      }
+    });
   }
 
   async function initJobForm() {
@@ -483,18 +895,50 @@
 
     const errorElement = document.getElementById("job-form-error");
     const submitButton = document.getElementById("job-submit-button");
-    form.addEventListener("change", function () {
-      updateModeNotice(form);
+    initPitcherAllocationEditor(form, errorElement);
+    form.addEventListener("input", function (event) {
+      const field = event.target;
+      if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) {
+        return;
+      }
+
+      syncMirroredField(form, field);
     });
+    form.addEventListener("change", function (event) {
+      const field = event.target;
+      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+        syncMirroredField(form, field);
+      }
+      updateSelectedModeOptions(form);
+      updateWorkflowSections(form);
+      updateModeNotice(form);
+      syncPitcherAllocation(form);
+    });
+    updateSelectedModeOptions(form);
+    updateWorkflowSections(form);
     updateModeNotice(form);
+    syncPitcherAllocation(form);
 
     form.addEventListener("submit", async function (event) {
       event.preventDefault();
       errorElement.textContent = "";
       submitButton.disabled = true;
-      submitButton.textContent = "取り込みを開始しています...";
+      submitButton.textContent = "送信中...";
 
       try {
+        const workflow = new FormData(form).get("workflow");
+        const pitcherState = syncPitcherAllocation(form);
+        if (workflow === "pitcher") {
+          if (!pitcherState.isValid) {
+            errorElement.textContent = pitcherState.message || "投手割当を確認してください。";
+            return;
+          }
+          if (!pitcherState.hasAllocations) {
+            errorElement.textContent = "投手を1人以上入力してください。";
+            return;
+          }
+        }
+
         const formData = new FormData(form);
         const payload = Object.fromEntries(formData.entries());
 
@@ -515,7 +959,7 @@
         errorElement.textContent = "通信エラーが発生しました。";
       } finally {
         submitButton.disabled = false;
-        submitButton.textContent = "取り込みを開始";
+        submitButton.textContent = "実行";
       }
     });
   }

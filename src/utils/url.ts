@@ -15,12 +15,14 @@ export function resolveSourceGameUrl(input: JobInput, orderMadeBaseUrl: string):
 
 export function makeDedupeKey(input: JobInput): string {
   return JSON.stringify({
+    workflow: input.workflow,
     sourceGameId: input.sourceGameId,
     sourceUrl: input.sourceUrl,
     targetGameKey: input.targetGameKey,
     targetGameDate: input.targetGameDate,
     targetOpponent: input.targetOpponent,
     targetVenue: input.targetVenue,
+    pitcherAllocationText: input.pitcherAllocationText,
   });
 }
 
@@ -36,3 +38,6 @@ export function ensureAbsoluteUrl(href: string | null, baseUrl: string): string 
   }
 }
 
+export function buildTsLeaguePublicGameUrl(gameId: string, year: string): string {
+  return new URL(`/game/${year}/index.php?gameid=${encodeURIComponent(gameId)}`, "https://ts-league.com").toString();
+}

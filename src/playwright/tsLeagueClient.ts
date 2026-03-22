@@ -90,25 +90,6 @@ function scoreGameCandidate(
   return score;
 }
 
-async function listGameCandidates(page: Page): Promise<Array<GameMatchCandidate & { formIndex: number }>> {
-  return page.evaluate(() => {
-    return Array.from(document.forms)
-      .map((form, formIndex) => {
-        const action = form.getAttribute("action") ?? "";
-        const row = form.closest("tr");
-        const rowText = row ? (row.textContent ?? "").replace(/\s+/g, " ").trim() : "";
-        return {
-          formIndex,
-          action,
-          label: rowText,
-          href: null,
-          score: 0,
-        };
-      })
-      .filter((item) => item.action === "gameof_edit.php" && item.label !== "");
-  });
-}
-
 export async function openTargetGame(
   page: Page,
   secrets: TsLeagueSecrets,
@@ -117,13 +98,30 @@ export async function openTargetGame(
     targetGameDate: string | null;
     targetOpponent: string | null;
     targetVenue: string | null;
+    editAction?: "gameof_edit.php" | "gamedf_edit.php";
   },
 ): Promise<{ candidates: GameMatchCandidate[]; selectedUrl: string | null }> {
   await ensureTsLeagueLogin(page, secrets);
   await page.goto(secrets.gameListUrl, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle").catch(() => undefined);
 
-  const rawCandidates = await listGameCandidates(page);
+  const rawCandidates = await page.evaluate((action) => {
+    return Array.from(document.forms)
+      .map((form, formIndex) => {
+        const htmlForm = form as HTMLFormElement;
+        const formAction = htmlForm.getAttribute("action") ?? "";
+        const row = htmlForm.closest("tr");
+        const rowText = row ? (row.textContent ?? "").replace(/\s+/g, " ").trim() : "";
+        return {
+          formIndex,
+          action: formAction,
+          label: rowText,
+          href: null,
+          score: 0,
+        };
+      })
+      .filter((item) => item.action === action && item.label !== "");
+  }, params.editAction ?? "gameof_edit.php");
   const candidates = rawCandidates
     .map((candidate) => ({
       ...candidate,
@@ -590,7 +588,11 @@ export async function submitTargetForm(page: Page, preview: TargetFormPreview): 
   }
 
   const form = page.locator("form").nth(preview.selectedFormIndex);
-  const submit = form.locator('#sbmitBtn, button[type="submit"], input[type="submit"]').first();
+  const primarySubmit = form.locator("#sbmitBtn").first();
+  const submit =
+    (await primarySubmit.count()) > 0
+      ? primarySubmit
+      : form.locator('button[type="submit"], input[type="submit"]').last();
   if ((await submit.count()) === 0) {
     throw new Error("target submit button was not found");
   }

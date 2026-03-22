@@ -37,12 +37,14 @@ async function main() {
 
     const resolvedSourceUrl = resolveSourceGameUrl(
       {
+        workflow: "batter",
         sourceGameId,
         sourceUrl,
         targetGameKey: "discovery",
         targetGameDate: null,
         targetOpponent: null,
         targetVenue: null,
+        pitcherAllocationText: null,
         mode: "dry-run",
       },
       secrets.orderMade.baseUrl,

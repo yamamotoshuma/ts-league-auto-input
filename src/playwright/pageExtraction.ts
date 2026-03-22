@@ -7,6 +7,31 @@ export async function extractPageTables(page: Page): Promise<TableSnapshot> {
       return (value ?? "").replace(/\s+/g, " ").trim();
     }
 
+    function extractContextText(table: Element): string | null {
+      const texts: string[] = [];
+      let current = table.previousElementSibling;
+
+      while (current && texts.length < 3) {
+        const text = normalizeText(current.textContent);
+        if (text !== "") {
+          texts.push(text);
+        }
+        current = current.previousElementSibling;
+      }
+
+      if (texts.length > 0) {
+        return texts.reverse().join(" | ");
+      }
+
+      const parent = table.parentElement;
+      if (!parent) {
+        return null;
+      }
+
+      const parentText = normalizeText(parent.textContent);
+      return parentText === "" ? null : parentText.slice(0, 200);
+    }
+
     function extractControls(cell: Element, rowIndex: number, cellIndex: number): RawControl[] {
       return Array.from(cell.querySelectorAll("input, select, textarea")).map((control, controlIndex) => {
         const input = control as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
@@ -43,7 +68,8 @@ export async function extractPageTables(page: Page): Promise<TableSnapshot> {
         const hasHeaderCell = cells.some((cell) => cell.tagName.toLowerCase() === "th");
         const texts = extractedCells.map((cell) => cell.text);
 
-        if (headers.length === 0 && (hasHeaderCell || (!hasControls && texts.some(Boolean)))) {
+        const isSyntheticHeader = headers.length === 0 && !hasHeaderCell && !hasControls && texts.some(Boolean);
+        if ((rows.length === 0 && hasHeaderCell) || isSyntheticHeader) {
           headers = texts;
           return;
         }
@@ -57,6 +83,7 @@ export async function extractPageTables(page: Page): Promise<TableSnapshot> {
       return {
         tableIndex,
         caption: normalizeText(table.querySelector("caption")?.textContent),
+        contextText: extractContextText(table),
         headers,
         rows,
       };
@@ -78,6 +105,21 @@ export async function extractForms(page: Page): Promise<FormSnapshot[]> {
   return page.evaluate(() => {
     function normalizeText(value: string | null | undefined): string {
       return (value ?? "").replace(/\s+/g, " ").trim();
+    }
+
+    function extractContextText(table: Element): string | null {
+      const texts: string[] = [];
+      let current = table.previousElementSibling;
+
+      while (current && texts.length < 3) {
+        const text = normalizeText(current.textContent);
+        if (text !== "") {
+          texts.push(text);
+        }
+        current = current.previousElementSibling;
+      }
+
+      return texts.length > 0 ? texts.reverse().join(" | ") : null;
     }
 
     function extractControls(root: ParentNode, rowIndex: number, cellIndex: number): RawControl[] {
@@ -116,7 +158,8 @@ export async function extractForms(page: Page): Promise<FormSnapshot[]> {
         const hasHeaderCell = cells.some((cell) => cell.tagName.toLowerCase() === "th");
         const texts = extractedCells.map((cell) => cell.text);
 
-        if (headers.length === 0 && (hasHeaderCell || (!hasControls && texts.some(Boolean)))) {
+        const isSyntheticHeader = headers.length === 0 && !hasHeaderCell && !hasControls && texts.some(Boolean);
+        if ((rows.length === 0 && hasHeaderCell) || isSyntheticHeader) {
           headers = texts;
           return;
         }
@@ -130,6 +173,7 @@ export async function extractForms(page: Page): Promise<FormSnapshot[]> {
       return {
         tableIndex,
         caption: normalizeText(table.querySelector("caption")?.textContent),
+        contextText: extractContextText(table),
         headers,
         rows,
       };
@@ -152,4 +196,3 @@ export async function extractForms(page: Page): Promise<FormSnapshot[]> {
     });
   });
 }
-

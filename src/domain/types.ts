@@ -1,17 +1,20 @@
 import type { BatterStatField } from "../utils/constants";
 
 export type RunMode = "dry-run" | "commit";
+export type Workflow = "batter" | "pitcher";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type LogLevel = "info" | "warn" | "error";
 export type MatchConfidence = "high" | "medium" | "low" | "none";
 
 export interface JobInput {
+  workflow: Workflow;
   sourceGameId: string | null;
   sourceUrl: string | null;
   targetGameKey: string;
   targetGameDate: string | null;
   targetOpponent: string | null;
   targetVenue: string | null;
+  pitcherAllocationText: string | null;
   mode: RunMode;
 }
 
@@ -118,6 +121,7 @@ export interface RawTableRow {
 export interface RawTable {
   tableIndex: number;
   caption: string | null;
+  contextText?: string | null;
   headers: string[];
   rows: RawTableRow[];
 }
@@ -247,10 +251,146 @@ export interface MappingPreview {
   warnings: string[];
 }
 
+export interface PitcherAllocation {
+  order: number;
+  rawText: string;
+  pitcherName: string;
+  innings: number;
+  outs: number;
+}
+
+export interface PitcherSourceInningResult {
+  inning: number;
+  rawText: string;
+  events: string[];
+}
+
+export interface PitcherSourceBatterRow {
+  battingOrder: number | null;
+  playerName: string;
+  inningResults: PitcherSourceInningResult[];
+}
+
+export interface PitcherSourceInningSummary {
+  inning: number;
+  runsAllowed: number | null;
+  hitsAllowed: number;
+  homeRunsAllowed: number;
+  strikeouts: number;
+  walks: number;
+  hitByPitch: number;
+  eventCount: number;
+  rawEvents: string[];
+}
+
+export interface PitcherSourcePreview {
+  sourceUrl: string;
+  pageTitle: string;
+  selectedTableIndex: number | null;
+  selectedHeaders: string[];
+  scoreboardTableIndex: number | null;
+  scoreboardHeaders: string[];
+  opponentTeam: string | null;
+  batterRows: PitcherSourceBatterRow[];
+  innings: PitcherSourceInningSummary[];
+  warnings: string[];
+}
+
+export type PitcherStatField =
+  | "innings"
+  | "outs"
+  | "earnedRuns"
+  | "runsAllowed"
+  | "strikeouts"
+  | "walks"
+  | "hitByPitch"
+  | "hitsAllowed"
+  | "homeRunsAllowed"
+  | "wildPitches"
+  | "balks"
+  | "decision"
+  | "completeGameType";
+
+export interface PitcherTargetRow {
+  formIndex: number;
+  rowIndex: number;
+  pitcherIndex: number | null;
+  pitcherLabel: string;
+  normalizedPitcherLabel: string;
+  selectedUserId: string | null;
+  pitcherControl: TargetControlRef | null;
+  pitcherOptions: TargetSelectOption[];
+  statFields: Partial<Record<PitcherStatField, TargetControlRef>>;
+}
+
+export interface PitcherTargetFormPreview {
+  pageUrl: string;
+  pageTitle: string;
+  selectedFormIndex: number | null;
+  action: string | null;
+  method: string | null;
+  availableForms: Array<{
+    formIndex: number;
+    action: string | null;
+    method: string | null;
+    tableCount: number;
+    looseControlCount: number;
+  }>;
+  hiddenInputs: Array<{
+    name: string | null;
+    value: string | null;
+  }>;
+  pitcherRows: PitcherTargetRow[];
+}
+
+export interface PitcherDerivedStatLine {
+  innings: number;
+  outs: number;
+  earnedRuns: number | null;
+  runsAllowed: number | null;
+  strikeouts: number;
+  walks: number;
+  hitByPitch: number;
+  hitsAllowed: number;
+  homeRunsAllowed: number;
+  wildPitches: number | null;
+  balks: number | null;
+}
+
+export interface PitcherMappingAssignment {
+  allocation: PitcherAllocation;
+  inningStart: number;
+  inningEnd: number;
+  sourceInnings: PitcherSourceInningSummary[];
+  targetPitcherLabel: string | null;
+  targetRowIndex: number | null;
+  confidence: MatchConfidence;
+  playerSelection: TargetOptionAssignment | null;
+  statAssignments: Partial<Record<PitcherStatField, TargetControlRef>>;
+  derivedStats: PitcherDerivedStatLine;
+  warnings: string[];
+}
+
+export interface PitcherMappingPreview {
+  assignments: PitcherMappingAssignment[];
+  unmatchedAllocations: string[];
+  unmatchedTargetPlayers: string[];
+  warnings: string[];
+}
+
+export interface PitcherPreview {
+  allocations: PitcherAllocation[];
+  source: PitcherSourcePreview | null;
+  target: PitcherTargetFormPreview | null;
+  mapping: PitcherMappingPreview | null;
+}
+
 export interface DryRunPreview {
+  workflow: Workflow;
   source: SourcePreview | null;
   target: TargetFormPreview | null;
   mapping: MappingPreview | null;
+  pitcher: PitcherPreview | null;
   warnings: string[];
   commitReady: boolean;
 }
