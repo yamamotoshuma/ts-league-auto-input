@@ -92,6 +92,46 @@ const combinedSnapshot: TableSnapshot = {
   tables: [combinedBattingTable],
 };
 
+const compactEventTable: RawTable = {
+  tableIndex: 2,
+  caption: null,
+  contextText: "Ｒｅ 打撃成績",
+  headers: ["打順", "選手", "1回"],
+  rows: [
+    {
+      rowIndex: 1,
+      cells: [cell("1"), cell("打者1"), cell("安打安打(2)")],
+    },
+    {
+      rowIndex: 2,
+      cells: [cell("2"), cell("打者2"), cell("アウトアウト")],
+    },
+  ],
+};
+
+const compactScoreboardTable: RawTable = {
+  tableIndex: 3,
+  caption: null,
+  contextText: "試合経過",
+  headers: ["チーム", "1回"],
+  rows: [
+    {
+      rowIndex: 1,
+      cells: [cell("ORDERMADE"), cell("0")],
+    },
+    {
+      rowIndex: 2,
+      cells: [cell("Ｒｅ"), cell("2")],
+    },
+  ],
+};
+
+const compactSnapshot: TableSnapshot = {
+  url: "https://ts-league.com/game/2026/index.php?gameid=14249",
+  title: "試合結果",
+  tables: [compactScoreboardTable, compactEventTable],
+};
+
 describe("buildPitcherSourcePreview", () => {
   it("aggregates opponent batting events by inning", () => {
     const preview = buildPitcherSourcePreview(snapshot, "Re");
@@ -150,6 +190,24 @@ describe("buildPitcherSourcePreview", () => {
         walks: 1,
         hitByPitch: 0,
         hitsAllowed: 1,
+      }),
+    ]);
+  });
+
+  it("splits compact multi-event cells into separate plate appearances", () => {
+    const preview = buildPitcherSourcePreview(compactSnapshot, "Re");
+
+    expect(preview.batterRows[0]?.inningResults[0]?.events).toEqual(["安打", "安打(2)"]);
+    expect(preview.batterRows[1]?.inningResults[0]?.events).toEqual(["アウト", "アウト"]);
+    expect(preview.innings).toEqual([
+      expect.objectContaining({
+        inning: 1,
+        runsAllowed: 2,
+        hitsAllowed: 2,
+        strikeouts: 0,
+        walks: 0,
+        hitByPitch: 0,
+        eventCount: 4,
       }),
     ]);
   });

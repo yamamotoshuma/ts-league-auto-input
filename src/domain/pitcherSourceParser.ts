@@ -15,6 +15,37 @@ type InningColumn = {
   inning: number;
 };
 
+const COMPACT_EVENT_PATTERNS = [
+  /^見逃三振(?:\(\d+\))?/,
+  /^空振三振(?:\(\d+\))?/,
+  /^見三振(?:\(\d+\))?/,
+  /^空三振(?:\(\d+\))?/,
+  /^三振(?:\(\d+\))?/,
+  /^振逃(?:\(\d+\))?/,
+  /^敬遠(?:\(\d+\))?/,
+  /^四球(?:\(\d+\))?/,
+  /^死球(?:\(\d+\))?/,
+  /^本塁打(?:\(\d+\))?/,
+  /^三塁打(?:\(\d+\))?/,
+  /^二塁打(?:\(\d+\))?/,
+  /^内野安打(?:\(\d+\))?/,
+  /^内安(?:\(\d+\))?/,
+  /^安打(?:\(\d+\))?/,
+  /^安[23２３](?:\(\d+\))?/,
+  /^犠飛(?:\(\d+\))?/,
+  /^犠打(?:\(\d+\))?/,
+  /^野選(?:\(\d+\))?/,
+  /^敵失(?:\(\d+\))?/,
+  /^エラー(?:\(\d+\))?/,
+  /^三重殺(?:\(\d+\))?/,
+  /^併殺(?:\(\d+\))?/,
+  /^ゲッツー(?:\(\d+\))?/,
+  /^アウト(?:\(\d+\))?/,
+  /^[投捕一二三遊左右中ニ](?:安|2|3|２|３|本|ゴ|飛|直|失|併|選)(?:\(\d+\))?/,
+  /^[投捕一二三遊左右中ニ](?:犠打|犠飛|邪飛)(?:\(\d+\))?/,
+  /^ア(?:ゴ|飛|直)(?:\(\d+\))?/,
+];
+
 function findHeaderIndex(headers: string[], aliases: string[]): number | null {
   const normalizedHeaders = headers.map((header) => normalizeLooseKey(header));
   const normalizedAliases = aliases.map((alias) => normalizeLooseKey(alias));
@@ -192,8 +223,37 @@ function splitCellEvents(value: string): string[] {
   return normalized
     .replace(/[／/,]/g, " ")
     .split(/\s+/)
-    .map((token) => normalizeText(token))
-    .filter(Boolean);
+    .flatMap((token) => {
+      const compact = normalizeText(token);
+      if (!compact) {
+        return [];
+      }
+
+      const events: string[] = [];
+      let rest = compact;
+
+      while (rest !== "") {
+        const matchedPattern = COMPACT_EVENT_PATTERNS.find((pattern) => pattern.test(rest));
+        if (!matchedPattern) {
+          if (events.length === 0) {
+            return [compact];
+          }
+
+          events.push(rest);
+          break;
+        }
+
+        const match = rest.match(matchedPattern);
+        if (!match || !match[0]) {
+          break;
+        }
+
+        events.push(match[0]);
+        rest = rest.slice(match[0].length);
+      }
+
+      return events.filter(Boolean);
+    });
 }
 
 function classifyEvent(rawText: string) {

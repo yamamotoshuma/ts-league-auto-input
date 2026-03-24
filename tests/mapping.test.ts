@@ -485,6 +485,100 @@ describe("buildMappingPreview", () => {
     expect(preview.assignments[0].appearanceAssignments[0].targetOptionLabel).toBe("三振");
     expect(isCommitReady(preview)).toBe(true);
   });
+
+  it("stays commit-ready even when the target row will be overwritten", () => {
+    const source: BatterStat[] = [
+      {
+        playerName: "岩本",
+        battingOrder: 1,
+        position: "左",
+        plateAppearances: 1,
+        atBats: 1,
+        runs: 0,
+        hits: 1,
+        rbi: 0,
+        doubles: 0,
+        triples: 0,
+        homeRuns: 0,
+        walks: 0,
+        hitByPitch: 0,
+        strikeouts: 0,
+        sacrificeBunts: 0,
+        sacrificeFlies: 0,
+        stolenBases: 0,
+        errors: 0,
+        plateAppearanceResults: [
+          {
+            appearanceIndex: 1,
+            rawText: "中安打",
+            normalizedText: "中安打",
+          },
+        ],
+      },
+    ];
+
+    const targetRow = createTargetRow({
+      playerLabel: "[10]山田太郎",
+      normalizedPlayerLabel: "山田太郎",
+      selectedUserId: "10",
+      playerControl: {
+        ...createTargetRow().playerControl!,
+        currentValue: "10",
+        currentLabel: "[10]山田太郎",
+      },
+      selectedPositionLabel: "遊",
+      positionControl: {
+        ...createTargetRow().positionControl!,
+        currentValue: "6",
+        currentLabel: "遊",
+      },
+      statFields: {
+        ...createTargetRow().statFields,
+        rbi: {
+          ...createTargetRow().statFields.rbi,
+          currentValue: "2",
+        },
+        runs: {
+          ...createTargetRow().statFields.runs,
+          currentValue: "1",
+        },
+        stolenBases: {
+          ...createTargetRow().statFields.stolenBases,
+          currentValue: "1",
+        },
+        errors: {
+          ...createTargetRow().statFields.errors,
+          currentValue: "1",
+        },
+      },
+      appearanceFields: [
+        {
+          appearanceIndex: 1,
+          main: {
+            ...createTargetRow().appearanceFields[0].main,
+            currentValue: "49",
+            currentLabel: "ニゴ",
+          },
+          sub: null,
+          rbi: {
+            ...createTargetRow().appearanceFields[0].rbi,
+            currentValue: "1",
+            currentLabel: "1",
+          },
+          rbiSub: null,
+        },
+      ],
+    });
+
+    const preview = buildMappingPreview(source, createTargetPreview([targetRow]));
+    expect(preview.assignments[0].playerSelection?.targetOptionLabel).toBe("[19]岩本");
+    expect(preview.assignments[0].positionSelection?.targetOptionLabel).toBe("左");
+    expect(preview.assignments[0].appearanceAssignments[0].targetOptionLabel).toBe("中安");
+    expect(preview.warnings).toContain("岩本: existing target player would be overwritten");
+    expect(preview.warnings).toContain("岩本: existing target position would be overwritten");
+    expect(preview.warnings).toContain("岩本: appearance 1: existing target appearance value would be overwritten");
+    expect(isCommitReady(preview)).toBe(true);
+  });
 });
 
 describe("verifyAppliedMapping", () => {

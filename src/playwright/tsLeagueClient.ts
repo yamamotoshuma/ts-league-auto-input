@@ -502,10 +502,6 @@ export async function applyMapping(page: Page, mapping: MappingPreview): Promise
     {
       const locator = await getControlLocator(page, assignment.playerSelection.control);
       const existingValue = await locator.inputValue().catch(() => "");
-      if (!isEmptySelectionValue(existingValue) && existingValue !== assignment.playerSelection.targetOptionValue) {
-        throw new Error(`existing target player would be overwritten for ${assignment.source.playerName}`);
-      }
-
       if (existingValue !== assignment.playerSelection.targetOptionValue) {
         await locator.selectOption(assignment.playerSelection.targetOptionValue);
       }
@@ -514,10 +510,6 @@ export async function applyMapping(page: Page, mapping: MappingPreview): Promise
     if (assignment.positionSelection?.control && assignment.positionSelection.targetOptionValue !== null) {
       const locator = await getControlLocator(page, assignment.positionSelection.control);
       const existingValue = await locator.inputValue().catch(() => "");
-      if (!isEmptySelectionValue(existingValue) && existingValue !== assignment.positionSelection.targetOptionValue) {
-        throw new Error(`existing target position would be overwritten for ${assignment.source.playerName}`);
-      }
-
       if (existingValue !== assignment.positionSelection.targetOptionValue) {
         await locator.selectOption(assignment.positionSelection.targetOptionValue);
       }
@@ -537,12 +529,6 @@ export async function applyMapping(page: Page, mapping: MappingPreview): Promise
       const existingValue = await locator.inputValue().catch(() => "");
       const intendedValue = stringifyStatValue(sourceValue);
 
-      if (existingValue !== "" && existingValue !== intendedValue) {
-        throw new Error(
-          `existing target value would be overwritten for ${assignment.source.playerName} / ${field}`,
-        );
-      }
-
       if (existingValue === intendedValue) {
         continue;
       }
@@ -559,12 +545,6 @@ export async function applyMapping(page: Page, mapping: MappingPreview): Promise
 
       const locator = await getControlLocator(page, appearance.targetControl);
       const existingValue = await locator.inputValue().catch(() => "");
-      if (!isEmptySelectionValue(existingValue) && existingValue !== appearance.targetOptionValue) {
-        throw new Error(
-          `existing target appearance value would be overwritten for ${assignment.source.playerName} / ${appearance.sourceText}`,
-        );
-      }
-
       if (existingValue === appearance.targetOptionValue) {
         continue;
       }

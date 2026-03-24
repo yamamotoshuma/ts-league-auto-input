@@ -214,7 +214,7 @@ export function renderIndexPage(jobs: JobRecord[]): string {
                     <div class="pitcher-editor-head">
                       <div>
                         <span class="field-label">登板順</span>
-                        <small>投手名 / 回</small>
+                        <small>投手名 / 回 / 端数</small>
                       </div>
                       <button id="pitcher-row-add" class="secondary-button" type="button">行を追加</button>
                     </div>
@@ -229,7 +229,15 @@ export function renderIndexPage(jobs: JobRecord[]): string {
                       </label>
                       <label class="pitcher-cell pitcher-cell-small">
                         <span>回</span>
-                        <input type="number" min="0" step="1" inputmode="numeric" data-pitcher-innings placeholder="3">
+                        <input type="number" min="0" step="1" inputmode="numeric" data-pitcher-innings-whole placeholder="1">
+                      </label>
+                      <label class="pitcher-cell pitcher-cell-small">
+                        <span>端数</span>
+                        <select data-pitcher-outs>
+                          <option value="">なし</option>
+                          <option value="1/3">1/3</option>
+                          <option value="2/3">2/3</option>
+                        </select>
                       </label>
                       <button class="ghost-button" type="button" data-pitcher-remove>削除</button>
                     </div>

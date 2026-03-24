@@ -717,6 +717,47 @@
     });
   }
 
+  function parsePitcherInningsValue(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/\s+/g, "");
+    if (!normalized) {
+      return { inningsWhole: "", outsFraction: "" };
+    }
+
+    if (/^\d+(?:回)?$/.test(normalized)) {
+      return {
+        inningsWhole: normalized.replace(/回$/, ""),
+        outsFraction: "",
+      };
+    }
+
+    if (/^(1\/3|2\/3)(?:回)?$/.test(normalized)) {
+      return {
+        inningsWhole: "",
+        outsFraction: normalized.replace(/回$/, ""),
+      };
+    }
+
+    const mixedMatch = normalized.match(/^(\d+)(?:回)?(1\/3|2\/3)$/);
+    if (mixedMatch) {
+      return {
+        inningsWhole: mixedMatch[1],
+        outsFraction: mixedMatch[2],
+      };
+    }
+
+    const decimalMatch = normalized.match(/^(\d+)\.(1|2)$/);
+    if (decimalMatch) {
+      return {
+        inningsWhole: decimalMatch[1],
+        outsFraction: decimalMatch[2] === "1" ? "1/3" : "2/3",
+      };
+    }
+
+    return { inningsWhole: normalized.replace(/[^\d]/g, ""), outsFraction: "" };
+  }
+
   function parsePitcherAllocationText(text) {
     return String(text || "")
       .split(/\r?\n/)
@@ -725,14 +766,16 @@
       })
       .filter(Boolean)
       .map(function (line) {
-        const match = line.match(/^(.+?)\s+(\d+)(?:回)?$/);
+        const match = line.match(/^(.+?)\s+(.+)$/);
         if (!match) {
-          return { pitcherName: line, innings: "" };
+          return { pitcherName: line, inningsWhole: "", outsFraction: "" };
         }
 
+        const innings = parsePitcherInningsValue(match[2]);
         return {
           pitcherName: match[1].trim(),
-          innings: match[2].trim(),
+          inningsWhole: innings.inningsWhole,
+          outsFraction: innings.outsFraction,
         };
       });
   }
@@ -772,12 +815,16 @@
     }
 
     const nameInput = row.querySelector("[data-pitcher-name]");
-    const inningsInput = row.querySelector("[data-pitcher-innings]");
+    const inningsInput = row.querySelector("[data-pitcher-innings-whole]");
+    const outsInput = row.querySelector("[data-pitcher-outs]");
     if (nameInput) {
       nameInput.value = values?.pitcherName || "";
     }
     if (inningsInput) {
-      inningsInput.value = values?.innings || "";
+      inningsInput.value = values?.inningsWhole || "";
+    }
+    if (outsInput) {
+      outsInput.value = values?.outsFraction || "";
     }
 
     elements.rowsRoot.appendChild(fragment);
@@ -800,22 +847,27 @@
     const allocations = listPitcherRows(form)
       .map(function (row) {
         const nameInput = row.querySelector("[data-pitcher-name]");
-        const inningsInput = row.querySelector("[data-pitcher-innings]");
+        const inningsInput = row.querySelector("[data-pitcher-innings-whole]");
+        const outsInput = row.querySelector("[data-pitcher-outs]");
         const allocation = {
           pitcherName: String(nameInput?.value || "").trim(),
-          innings: String(inningsInput?.value || "").trim(),
+          inningsWhole: String(inningsInput?.value || "").trim(),
+          outsFraction: String(outsInput?.value || "").trim(),
         };
-        const isFilled = allocation.pitcherName || allocation.innings;
-        const isIncomplete = isFilled && (!allocation.pitcherName || !allocation.innings);
+        const hasInnings = allocation.inningsWhole || allocation.outsFraction;
+        const isFilled = allocation.pitcherName || hasInnings;
+        const isZeroOnly = allocation.inningsWhole === "0" && !allocation.outsFraction;
+        const isIncomplete = isFilled && (!allocation.pitcherName || !hasInnings || isZeroOnly);
         row.toggleAttribute("data-invalid", Boolean(isIncomplete));
         return allocation;
       })
       .filter(function (allocation) {
-        return allocation.pitcherName || allocation.innings;
+        return allocation.pitcherName || allocation.inningsWhole || allocation.outsFraction;
       });
 
     const hasIncomplete = allocations.some(function (allocation) {
-      return !allocation.pitcherName || !allocation.innings;
+      const hasInnings = allocation.inningsWhole || allocation.outsFraction;
+      return !allocation.pitcherName || !hasInnings || (allocation.inningsWhole === "0" && !allocation.outsFraction);
     });
 
     if (hasIncomplete) {
@@ -823,13 +875,18 @@
       return {
         isValid: false,
         hasAllocations: true,
-        message: "投手名と回を両方入力してください。",
+        message: "投手名と投球回を入力してください。",
       };
     }
 
     elements.hiddenInput.value = allocations
       .map(function (allocation) {
-        return allocation.pitcherName + " " + allocation.innings + "回";
+        const inningText = allocation.inningsWhole && allocation.outsFraction
+          ? allocation.inningsWhole + "回" + allocation.outsFraction
+          : allocation.inningsWhole
+            ? allocation.inningsWhole + "回"
+            : allocation.outsFraction;
+        return allocation.pitcherName + " " + inningText;
       })
       .join("\n");
 
@@ -874,14 +931,21 @@
       ensurePitcherRows(form);
       updatePitcherRowIndices(form);
       syncPitcherAllocation(form);
-      if (errorElement && errorElement.textContent === "投手名と回を両方入力してください。") {
+      if (errorElement && errorElement.textContent === "投手名と投球回を入力してください。") {
         errorElement.textContent = "";
       }
     });
 
     elements.rowsRoot.addEventListener("input", function () {
       syncPitcherAllocation(form);
-      if (errorElement && errorElement.textContent === "投手名と回を両方入力してください。") {
+      if (errorElement && errorElement.textContent === "投手名と投球回を入力してください。") {
+        errorElement.textContent = "";
+      }
+    });
+
+    elements.rowsRoot.addEventListener("change", function () {
+      syncPitcherAllocation(form);
+      if (errorElement && errorElement.textContent === "投手名と投球回を入力してください。") {
         errorElement.textContent = "";
       }
     });

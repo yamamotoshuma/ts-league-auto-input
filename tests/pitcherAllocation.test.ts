@@ -26,6 +26,22 @@ describe("parsePitcherAllocationText", () => {
       innings: 3,
       outs: 1,
     });
+    expect(parsePitcherAllocationText("安楽 2/3\n藤田 1/3回")).toEqual([
+      {
+        order: 1,
+        rawText: "安楽 2/3",
+        pitcherName: "安楽",
+        innings: 0,
+        outs: 2,
+      },
+      {
+        order: 2,
+        rawText: "藤田 1/3回",
+        pitcherName: "藤田",
+        innings: 0,
+        outs: 1,
+      },
+    ]);
 
     expect(() => parsePitcherAllocationText("安楽\n藤田 3回")).toThrow(/1行目/);
   });

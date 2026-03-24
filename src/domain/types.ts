@@ -348,11 +348,11 @@ export interface PitcherDerivedStatLine {
   outs: number;
   earnedRuns: number | null;
   runsAllowed: number | null;
-  strikeouts: number;
-  walks: number;
-  hitByPitch: number;
-  hitsAllowed: number;
-  homeRunsAllowed: number;
+  strikeouts: number | null;
+  walks: number | null;
+  hitByPitch: number | null;
+  hitsAllowed: number | null;
+  homeRunsAllowed: number | null;
   wildPitches: number | null;
   balks: number | null;
 }

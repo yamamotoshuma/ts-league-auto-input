@@ -204,8 +204,21 @@ function scorePlayerOption(sourcePlayerName: string, option: TargetSelectOption)
   return score;
 }
 
+function findBestPlayerOption(sourcePlayerName: string, options: TargetSelectOption[]): {
+  best: { option: TargetSelectOption; score: number } | null;
+  second: { option: TargetSelectOption; score: number } | null;
+} {
+  const candidates = options
+    .map((option) => ({ option, score: scorePlayerOption(sourcePlayerName, option) }))
+    .sort((left, right) => right.score - left.score);
+
+  return {
+    best: candidates[0] ?? null,
+    second: candidates[1] ?? null,
+  };
+}
+
 function resolvePlayerSelection(source: BatterStat, target: TargetPlayerRow): TargetOptionAssignment {
-  const warnings: string[] = [];
   const currentValue = target.playerControl?.currentValue ?? target.selectedUserId;
   const currentLabel = target.playerLabel;
 
@@ -218,6 +231,9 @@ function resolvePlayerSelection(source: BatterStat, target: TargetPlayerRow): Ta
     };
   }
 
+  const warnings: string[] = [];
+  const { best, second } = findBestPlayerOption(source.playerName, target.playerOptions);
+
   if (isMeaningfulSelectValue(currentValue)) {
     if (namesLooselyMatch(source.playerName, currentLabel)) {
       return {
@@ -227,20 +243,8 @@ function resolvePlayerSelection(source: BatterStat, target: TargetPlayerRow): Ta
         warnings,
       };
     }
-
-    return {
-      control: target.playerControl,
-      targetOptionValue: null,
-      targetOptionLabel: null,
-      warnings: ["existing target player would be overwritten"],
-    };
+    warnings.push("existing target player would be overwritten");
   }
-
-  const candidates = target.playerOptions
-    .map((option) => ({ option, score: scorePlayerOption(source.playerName, option) }))
-    .sort((left, right) => right.score - left.score);
-  const best = candidates[0] ?? null;
-  const second = candidates[1] ?? null;
 
   if (!best || best.score === 0) {
     warnings.push("target player option not resolved");
@@ -282,6 +286,9 @@ function resolvePositionSelection(source: BatterStat, target: TargetPlayerRow): 
   const currentValue = target.positionControl.currentValue;
   const currentLabel = target.selectedPositionLabel;
   const currentPosition = getTargetPosition(target);
+  const option =
+    target.positionOptions.find((candidate) => normalizePosition(candidate.label) === sourcePosition) ?? null;
+
   if (currentPosition === sourcePosition && currentValue !== null) {
     return {
       control: target.positionControl,
@@ -290,18 +297,6 @@ function resolvePositionSelection(source: BatterStat, target: TargetPlayerRow): 
       warnings: [],
     };
   }
-
-  if (currentPosition !== null && currentPosition !== sourcePosition) {
-    return {
-      control: target.positionControl,
-      targetOptionValue: null,
-      targetOptionLabel: null,
-      warnings: ["existing target position would be overwritten"],
-    };
-  }
-
-  const option =
-    target.positionOptions.find((candidate) => normalizePosition(candidate.label) === sourcePosition) ?? null;
 
   if (!option) {
     return {
@@ -312,11 +307,12 @@ function resolvePositionSelection(source: BatterStat, target: TargetPlayerRow): 
     };
   }
 
+  const warnings = currentPosition !== null && currentPosition !== sourcePosition ? ["existing target position would be overwritten"] : [];
   return {
     control: target.positionControl,
     targetOptionValue: option.value,
     targetOptionLabel: option.label,
-    warnings: [],
+    warnings,
   };
 }
 
@@ -381,53 +377,6 @@ function createAssignment(source: BatterStat, targetPreview: TargetFormPreview):
   };
 }
 
-function hasOverwriteRisk(assignment: MappingAssignment): boolean {
-  if (assignment.playerSelection?.control) {
-    const currentValue = assignment.playerSelection.control.currentValue ?? null;
-    if (
-      isMeaningfulSelectValue(currentValue) &&
-      assignment.playerSelection.targetOptionValue !== null &&
-      currentValue !== assignment.playerSelection.targetOptionValue
-    ) {
-      return true;
-    }
-  }
-
-  if (assignment.positionSelection?.control) {
-    const currentValue = assignment.positionSelection.control.currentValue ?? null;
-    if (
-      isMeaningfulSelectValue(currentValue) &&
-      assignment.positionSelection.targetOptionValue !== null &&
-      currentValue !== assignment.positionSelection.targetOptionValue
-    ) {
-      return true;
-    }
-  }
-
-  for (const field of TARGET_WRITABLE_STAT_FIELDS) {
-    const sourceValue = assignment.source[field];
-    if (sourceValue === null) {
-      continue;
-    }
-
-    const control = assignment.statAssignments[field];
-    if (!control) {
-      return true;
-    }
-
-    const currentValue = control.currentValue ?? "";
-    const intendedValue = stringifyStatValue(sourceValue);
-    if (currentValue !== "" && currentValue !== intendedValue) {
-      return true;
-    }
-  }
-
-  return assignment.appearanceAssignments.some((appearance) => {
-    const currentValue = appearance.targetControl?.currentValue ?? null;
-    return isMeaningfulAppearanceValue(currentValue) && currentValue !== appearance.targetOptionValue;
-  });
-}
-
 function hasAllWritableFields(assignment: MappingAssignment): boolean {
   if (!assignment.playerSelection?.control || !assignment.playerSelection.targetOptionValue) {
     return false;
@@ -458,7 +407,7 @@ function hasAllWritableFields(assignment: MappingAssignment): boolean {
     return false;
   }
 
-  return !hasOverwriteRisk(assignment);
+  return true;
 }
 
 export function buildMappingPreview(

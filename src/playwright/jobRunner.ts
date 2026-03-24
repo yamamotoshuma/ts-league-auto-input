@@ -272,7 +272,7 @@ export class PlaywrightJobRunner {
         mapping,
       },
       warnings,
-      commitReady: sourcePreview.warnings.length === 0 && isPitcherCommitReady(mapping),
+      commitReady: isPitcherCommitReady(mapping),
     };
     await context.savePreview(preview);
     await this.artifactStore.writeJson(jobId, "preview.json", preview);

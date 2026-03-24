@@ -466,7 +466,7 @@ pre {
 
 .pitcher-row {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1.4fr) minmax(96px, 0.7fr) auto;
+  grid-template-columns: 48px minmax(0, 1.3fr) minmax(88px, 0.5fr) minmax(110px, 0.55fr) auto;
   gap: 12px;
   align-items: end;
   padding: 12px;
@@ -885,7 +885,7 @@ code {
   }
 
   .pitcher-row {
-    grid-template-columns: 40px minmax(0, 1fr) 92px auto;
+    grid-template-columns: 40px minmax(0, 1fr) 88px 104px auto;
   }
 
   .detail-side {

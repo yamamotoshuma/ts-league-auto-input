@@ -18,16 +18,58 @@ function parseOuts(fragment: string | undefined): number {
   throw new Error(`対応していない端数です: ${fragment}`);
 }
 
+function parseInningFragment(fragment: string): { innings: number; outs: number } {
+  const normalized = normalizeText(fragment).replaceAll(" ", "");
+
+  if (/^\d+$/.test(normalized)) {
+    return {
+      innings: Number.parseInt(normalized, 10),
+      outs: 0,
+    };
+  }
+
+  if (/^\d+回$/.test(normalized)) {
+    return {
+      innings: Number.parseInt(normalized.replace(/回$/, ""), 10),
+      outs: 0,
+    };
+  }
+
+  if (/^(1\/3|2\/3)(?:回)?$/.test(normalized)) {
+    return {
+      innings: 0,
+      outs: parseOuts(normalized.replace(/回$/, "")),
+    };
+  }
+
+  const decimalMatch = normalized.match(/^(\d+)\.(1|2)$/);
+  if (decimalMatch) {
+    return {
+      innings: Number.parseInt(decimalMatch[1], 10),
+      outs: parseOuts(`.${decimalMatch[2]}`),
+    };
+  }
+
+  const mixedMatch = normalized.match(/^(\d+)(?:回)?(1\/3|2\/3)$/);
+  if (mixedMatch) {
+    return {
+      innings: Number.parseInt(mixedMatch[1], 10),
+      outs: parseOuts(mixedMatch[2]),
+    };
+  }
+
+  throw new Error("`投手名 3回` の形式で入力してください");
+}
+
 function parseLine(line: string, order: number): PitcherAllocation {
   const normalized = normalizeText(line);
-  const match = normalized.match(/^(.+?)\s+(\d+)(?:回)?(?:\s*(1\/3|2\/3)|\.(1|2))?$/);
+  const match = normalized.match(/^(.+?)\s+(.+)$/);
   if (!match) {
     throw new Error("`投手名 3回` の形式で入力してください");
   }
 
   const pitcherName = normalizeText(match[1]);
-  const innings = Number.parseInt(match[2], 10);
-  const outs = parseOuts(match[3] ?? (match[4] ? `.${match[4]}` : undefined));
+  const { innings, outs } = parseInningFragment(match[2]);
 
   if (!pitcherName) {
     throw new Error("投手名が空です");

@@ -8,6 +8,18 @@ import type {
 } from "../domain/types";
 import type { Page } from "playwright";
 
+const PITCHER_FORM_SELECTOR = 'form[action="gamedf_edit_complete.php"]';
+const PITCHER_ROW_SELECT_SELECTOR = 'select[name^="MemberScoreDfUserId["]';
+const PITCHER_ADD_CONTROL_SELECTOR = [
+  'input[type="submit"][value*="追加"]',
+  'input[type="button"][value*="追加"]',
+  'button:has-text("追加")',
+  'a:has-text("追加")',
+  'a[onclick*="AddMenber"]',
+  'input[name="add"]',
+  'button[name="add"]',
+].join(", ");
+
 const PITCHER_FIELD_NAMES: Record<PitcherStatField, string> = {
   innings: "MemberScoreDfIning",
   outs: "MemberScoreDfKaisu",
@@ -200,16 +212,21 @@ export async function inspectPitcherTargetForm(page: Page): Promise<PitcherTarge
 }
 
 export async function ensurePitcherRowCount(page: Page, desiredCount: number): Promise<void> {
+  const form = page.locator(PITCHER_FORM_SELECTOR).first();
+  if ((await form.count()) === 0) {
+    throw new Error("投手成績フォームが見つかりません");
+  }
+
   while (true) {
-    const currentCount = await page.locator('select[name^="MemberScoreDfUserId["]').count();
+    const currentCount = await form.locator(PITCHER_ROW_SELECT_SELECTOR).count();
     if (currentCount >= desiredCount) {
       return;
     }
 
-    const form = page.locator('form[action="gamedf_edit_complete.php"]').first();
-    const addButton = form.locator(
-      'input[type="submit"][value*="追加"], input[type="button"][value*="追加"], button:has-text("追加")',
-    ).first();
+    let addButton = form.locator(PITCHER_ADD_CONTROL_SELECTOR).first();
+    if ((await addButton.count()) === 0) {
+      addButton = page.locator(PITCHER_ADD_CONTROL_SELECTOR).first();
+    }
 
     if ((await addButton.count()) === 0) {
       throw new Error(`投手入力行が不足しています (${currentCount} / ${desiredCount})`);
@@ -220,6 +237,34 @@ export async function ensurePitcherRowCount(page: Page, desiredCount: number): P
       addButton.click(),
     ]);
     await page.waitForLoadState("networkidle").catch(() => undefined);
+
+    await page
+      .waitForFunction(
+        ({ formSelector, rowSelector, previousCount }) => {
+          const targetForm = document.querySelector(formSelector);
+          if (!targetForm) {
+            return false;
+          }
+
+          const rowCount = targetForm.querySelectorAll(rowSelector).length;
+          const bcountValue = (targetForm.querySelector('input[name="bcount"]') as HTMLInputElement | null)?.value ?? "0";
+          const bcount = Number.parseInt(bcountValue, 10);
+          return rowCount > previousCount || (!Number.isNaN(bcount) && bcount > previousCount);
+        },
+        {
+          formSelector: PITCHER_FORM_SELECTOR,
+          rowSelector: PITCHER_ROW_SELECT_SELECTOR,
+          previousCount: currentCount,
+        },
+        { timeout: 5000 },
+      )
+      .catch(() => undefined);
+
+    const nextCount = await form.locator(PITCHER_ROW_SELECT_SELECTOR).count();
+    if (nextCount <= currentCount) {
+      const bcountValue = await form.locator('input[name="bcount"]').inputValue().catch(() => "unknown");
+      throw new Error(`投手入力行を追加できませんでした (${currentCount} -> ${nextCount}, bcount=${bcountValue})`);
+    }
   }
 }
 
@@ -236,10 +281,6 @@ export async function applyPitcherMapping(page: Page, mapping: PitcherMappingPre
     {
       const locator = await getControlLocator(page, assignment.playerSelection.control);
       const existingValue = await locator.inputValue().catch(() => "");
-      if (!isEmptySelectionValue(existingValue) && existingValue !== assignment.playerSelection.targetOptionValue) {
-        throw new Error(`existing target pitcher would be overwritten for ${assignment.allocation.pitcherName}`);
-      }
-
       if (existingValue !== assignment.playerSelection.targetOptionValue) {
         await locator.selectOption(assignment.playerSelection.targetOptionValue);
       }
@@ -248,6 +289,7 @@ export async function applyPitcherMapping(page: Page, mapping: PitcherMappingPre
     for (const field of [
       "innings",
       "outs",
+      "earnedRuns",
       "runsAllowed",
       "strikeouts",
       "walks",
@@ -264,10 +306,6 @@ export async function applyPitcherMapping(page: Page, mapping: PitcherMappingPre
       const locator = await getControlLocator(page, control);
       const existingValue = await locator.inputValue().catch(() => "");
       const intendedValue = stringifyStatValue(sourceValue);
-
-      if (existingValue !== "" && existingValue !== intendedValue) {
-        throw new Error(`existing target value would be overwritten for ${assignment.allocation.pitcherName} / ${field}`);
-      }
 
       if (existingValue === intendedValue) {
         continue;
