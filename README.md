@@ -1,6 +1,6 @@
-# スカイツリーグ 野手成績自動反映ツール
+# スカイツリーグ成績反映 / グラウンド抽選ツール
 
-Order Made の試合ページから野手成績を取得し、TS-League 管理画面へ反映するローカル常駐アプリです。通常操作はブラウザだけで完結する想定です。
+Order Made の試合ページから野手成績を取得して TS-League 管理画面へ反映し、グラウンドの抽選申込みもブラウザから実行できるローカル常駐アプリです。通常操作はブラウザだけで完結する想定です。
 
 ## 現状
 
@@ -30,6 +30,7 @@ npx playwright install chromium
 cp secrets/order_made.local.json.example secrets/order_made.local.json
 cp secrets/ts_league.local.json.example secrets/ts_league.local.json
 cp secrets/notifications.local.json.example secrets/notifications.local.json
+cp secrets/tokyo_parks.local.json.example secrets/tokyo_parks.local.json
 ```
 
 4. 必要なら環境変数を設定する
@@ -81,6 +82,7 @@ cp .env.example .env.production
 cp secrets/order_made.local.json.example secrets/order_made.local.json
 cp secrets/ts_league.local.json.example secrets/ts_league.local.json
 cp secrets/notifications.local.json.example secrets/notifications.local.json
+cp secrets/tokyo_parks.local.json.example secrets/tokyo_parks.local.json
 chmod 600 .env.production secrets/*.json
 ```
 
@@ -155,8 +157,27 @@ journalctl -u ts-league-auto-input -n 200 --no-pager
 - `secrets/order_made.local.json`
 - `secrets/ts_league.local.json`
 - `secrets/notifications.local.json`
+- `secrets/tokyo_parks.local.json`
 
 `secrets/notifications.local.json` は任意です。設定すると LINE Bot push 通知を送ります。
+
+`secrets/tokyo_parks.local.json` はグラウンド抽選を使うときに必要です。
+
+```json
+{
+  "tokyoParks": {
+    "baseUrl": "https://kouen.sports.metro.tokyo.lg.jp/web/index.jsp",
+    "accounts": [
+      {
+        "label": "sample",
+        "userId": "SET_LOCALLY",
+        "password": "SET_LOCALLY",
+        "enabled": true
+      }
+    ]
+  }
+}
+```
 
 ```json
 {
@@ -191,6 +212,10 @@ journalctl -u ts-league-auto-input -n 200 --no-pager
   - 任意の対象日 / 対戦相手 / 球場
   - `dry-run` / `commit` 切替
   - 日本語ベースの説明と注意書き
+- グラウンド抽選画面 `/parks`
+  - 対象アカウント指定
+  - 競技 / 公園 / 施設 / 日付 / 開始 / 終了 / 申込み番号
+  - 1アカウントで申込み一覧を上から順に処理してからログアウト
 - ジョブ詳細画面
   - 状態
   - 実行結果
@@ -215,6 +240,13 @@ journalctl -u ts-league-auto-input -n 200 --no-pager
 - `npm run check:source -- --source-url https://ordermade.sakura.ne.jp/kanri/game/37`
 - `npm run check:target-login`
 - `npm run check:target-form -- --target-game-key "3/7 光が丘 Re" --target-game-date 2026-03-07 --target-venue 光が丘公園`
+
+## グラウンド抽選メモ
+
+- `/parks` で抽選申込みを作成します。
+- 同じアカウントでは、入力された申込み一覧を全部処理してからログアウトし、次のアカウントへ進みます。
+- `申込み番号` は確認画面の `1件目 / 2件目` に対応します。
+- 競技が違う申込みも同じアカウント内でそのまま続けて処理します。
 
 ## 注意
 

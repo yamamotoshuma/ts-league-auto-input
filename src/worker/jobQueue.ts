@@ -56,6 +56,10 @@ function createCandidateCauses(error: unknown): string[] {
     causes.push("取込元または公開試合ページのテーブル構造が想定と一致していない可能性があります");
   }
 
+  if (/公園|抽選|lottery|kouen|park/i.test(message)) {
+    causes.push("都立公園の画面構造変更、申込み枠不足、または指定した公園・施設・時間の不一致の可能性があります");
+  }
+
   if (/target game candidate|対象試合/i.test(message)) {
     causes.push("入力した条件では対象試合を特定できなかった可能性があります");
   }
@@ -128,6 +132,8 @@ export class JobQueue {
         targetOpponent: existing.targetOpponent,
         targetVenue: existing.targetVenue,
         pitcherAllocationText: existing.pitcherAllocationText ?? null,
+        parkAccountSelector: existing.parkAccountSelector ?? null,
+        parkEntriesText: existing.parkEntriesText ?? null,
         mode: existing.mode,
       },
       existing.id,

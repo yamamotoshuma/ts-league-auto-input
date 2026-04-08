@@ -1,7 +1,7 @@
 import type { BatterStatField } from "../utils/constants";
 
 export type RunMode = "dry-run" | "commit";
-export type Workflow = "batter" | "pitcher";
+export type Workflow = "batter" | "pitcher" | "park-lottery";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type LogLevel = "info" | "warn" | "error";
 export type MatchConfidence = "high" | "medium" | "low" | "none";
@@ -15,6 +15,8 @@ export interface JobInput {
   targetOpponent: string | null;
   targetVenue: string | null;
   pitcherAllocationText: string | null;
+  parkAccountSelector: string | null;
+  parkEntriesText: string | null;
   mode: RunMode;
 }
 
@@ -385,12 +387,59 @@ export interface PitcherPreview {
   mapping: PitcherMappingPreview | null;
 }
 
+export interface ParkLotteryApplyOption {
+  value: string;
+  label: string;
+}
+
+export interface ParkLotteryEntryInput {
+  sportClassCode: string;
+  sportLabel: string | null;
+  parkName: string;
+  facilityName: string;
+  useDate: string;
+  startTime: string;
+  endTime: string;
+  applyNumber: string;
+}
+
+export interface ParkLotteryEntryPreview {
+  entryIndex: number;
+  status: "ready" | "submitted" | "failed";
+  pageUrl: string | null;
+  pageTitle: string | null;
+  selectedSportLabel: string | null;
+  selectedParkName: string | null;
+  selectedFacilityName: string | null;
+  selectedDateLabel: string | null;
+  selectedTimeLabel: string | null;
+  requestedApplyNumber: string | null;
+  requestedApplyOptionValue: string | null;
+  availableApplyOptions: ParkLotteryApplyOption[];
+  warnings: string[];
+}
+
+export interface ParkLotteryAccountPreview {
+  accountLabel: string;
+  userId: string;
+  status: "ready" | "submitted" | "failed";
+  entryPreviews: ParkLotteryEntryPreview[];
+  warnings: string[];
+}
+
+export interface ParkLotteryPreview {
+  requestedAccountSelector: string | null;
+  requestedEntries: ParkLotteryEntryInput[];
+  accountPreviews: ParkLotteryAccountPreview[];
+}
+
 export interface DryRunPreview {
   workflow: Workflow;
   source: SourcePreview | null;
   target: TargetFormPreview | null;
   mapping: MappingPreview | null;
   pitcher: PitcherPreview | null;
+  parkLottery: ParkLotteryPreview | null;
   warnings: string[];
   commitReady: boolean;
 }
@@ -409,15 +458,35 @@ export interface TsLeagueSecrets {
   password: string;
 }
 
+export interface TokyoParkAccountSecrets {
+  label: string;
+  userId: string;
+  password: string;
+  enabled: boolean;
+}
+
+export interface TokyoParksSecrets {
+  baseUrl: string;
+  accounts: TokyoParkAccountSecrets[];
+}
+
 export interface LineNotificationSecrets {
   apiUrl: string;
   accessToken: string;
   recipientId: string;
 }
 
+export interface WebAppAuthSecrets {
+  username: string;
+  password: string;
+  sessionSecret: string;
+  cookieName: string;
+}
+
 export interface AppSecrets {
   orderMade: OrderMadeSecrets;
   tsLeague: TsLeagueSecrets;
+  tokyoParks: TokyoParksSecrets | null;
 }
 
 export interface AutomationContext {

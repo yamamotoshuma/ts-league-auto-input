@@ -8,6 +8,7 @@ import type { JobRecord } from "../src/domain/types";
 
 function createJobRecord(): JobRecord {
   return {
+    workflow: "batter",
     id: "job-123",
     dedupeKey: "dedupe",
     status: "running",
@@ -68,5 +69,97 @@ describe("jobNotification", () => {
     expect(message).toContain("ジョブでエラーが発生しました");
     expect(message).toContain("発生工程: 保存を実行");
     expect(message).toContain("内容: 保存に失敗しました");
+  });
+
+  it("builds a park lottery success message with failure details only for failed entries", () => {
+    const job = {
+      ...createJobRecord(),
+      workflow: "park-lottery" as const,
+      targetGameKey: "野球 / 浮間公園 / 野球場 / 2026-05-01 / 09:00-11:00",
+      targetGameDate: null,
+      targetOpponent: null,
+      targetVenue: null,
+      parkAccountSelector: "10088063,1004156",
+      parkEntriesText: "[]",
+      preview: {
+        workflow: "park-lottery" as const,
+        source: null,
+        target: null,
+        mapping: null,
+        pitcher: null,
+        warnings: [],
+        commitReady: false,
+        parkLottery: {
+          requestedAccountSelector: "10088063,1004156",
+          requestedEntries: [],
+          accountPreviews: [
+            {
+              accountLabel: "10088063",
+              userId: "10088063",
+              status: "ready" as const,
+              warnings: [],
+              entryPreviews: [
+                {
+                  entryIndex: 1,
+                  status: "ready" as const,
+                  pageUrl: null,
+                  pageTitle: null,
+                  selectedSportLabel: "野球",
+                  selectedParkName: "浮間公園",
+                  selectedFacilityName: "野球場",
+                  selectedDateLabel: "5月1日(金曜)2026年",
+                  selectedTimeLabel: "09時00分～11時00分",
+                  requestedApplyNumber: "1",
+                  requestedApplyOptionValue: "1-1",
+                  availableApplyOptions: [],
+                  warnings: [],
+                },
+              ],
+            },
+            {
+              accountLabel: "1004156",
+              userId: "1004156",
+              status: "failed" as const,
+              warnings: ["ログイン状態を維持できませんでした"],
+              entryPreviews: [
+                {
+                  entryIndex: 1,
+                  status: "failed" as const,
+                  pageUrl: null,
+                  pageTitle: null,
+                  selectedSportLabel: "野球",
+                  selectedParkName: "浮間公園",
+                  selectedFacilityName: "野球場",
+                  selectedDateLabel: "5月1日(金曜)2026年",
+                  selectedTimeLabel: "09時00分～11時00分",
+                  requestedApplyNumber: "1",
+                  requestedApplyOptionValue: null,
+                  availableApplyOptions: [],
+                  warnings: ["ログイン状態を維持できませんでした"],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies JobRecord;
+
+    const message = buildJobSucceededMessage(job, {
+      message: "partial",
+      sourcePlayerCount: 2,
+      matchedPlayers: 1,
+      unmappedPlayers: 1,
+      saveAttempted: true,
+      saved: false,
+      targetGameUrl: "https://example.com",
+    });
+
+    expect(message).toContain("都立公園抽選が完了しました");
+    expect(message).toContain("総数: 2");
+    expect(message).toContain("成功件数: 1");
+    expect(message).toContain("失敗件数: 1");
+    expect(message).toContain("1004156 / 浮間公園 / 野球場 / 5月1日(金曜)2026年 / 09時00分～11時00分 / 1枠目");
+    expect(message).toContain("ログイン状態を維持できませんでした");
+    expect(message).not.toContain("10088063 / 浮間公園");
   });
 });

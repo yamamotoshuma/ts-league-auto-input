@@ -23,6 +23,8 @@ export function makeDedupeKey(input: JobInput): string {
     targetOpponent: input.targetOpponent,
     targetVenue: input.targetVenue,
     pitcherAllocationText: input.pitcherAllocationText,
+    parkAccountSelector: input.parkAccountSelector,
+    parkEntriesText: input.parkEntriesText,
   });
 }
 

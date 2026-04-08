@@ -1,6 +1,14 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AppSecrets, LineNotificationSecrets, OrderMadeSecrets, TsLeagueSecrets } from "../domain/types";
+import type {
+  AppSecrets,
+  LineNotificationSecrets,
+  OrderMadeSecrets,
+  TokyoParkAccountSecrets,
+  TokyoParksSecrets,
+  TsLeagueSecrets,
+  WebAppAuthSecrets,
+} from "../domain/types";
 
 export class SecretsError extends Error {}
 
@@ -20,6 +28,7 @@ function assertString(value: unknown, field: string, fileLabel: string): string 
 export async function loadSecrets(projectRoot: string): Promise<AppSecrets> {
   const orderMadePath = join(projectRoot, "secrets", "order_made.local.json");
   const tsLeaguePath = join(projectRoot, "secrets", "ts_league.local.json");
+  const tokyoParksPath = join(projectRoot, "secrets", "tokyo_parks.local.json");
 
   let orderMadeRaw: Record<string, unknown>;
   let tsLeagueRaw: Record<string, unknown>;
@@ -38,7 +47,16 @@ export async function loadSecrets(projectRoot: string): Promise<AppSecrets> {
 
   const orderMade = validateOrderMadeSecrets(orderMadeRaw);
   const tsLeague = validateTsLeagueSecrets(tsLeagueRaw);
-  return { orderMade, tsLeague };
+  return {
+    orderMade,
+    tsLeague,
+    tokyoParks: await loadOptionalTokyoParksSecrets(tokyoParksPath),
+  };
+}
+
+export async function loadTokyoParksSecrets(projectRoot: string): Promise<TokyoParksSecrets | null> {
+  const tokyoParksPath = join(projectRoot, "secrets", "tokyo_parks.local.json");
+  return loadOptionalTokyoParksSecrets(tokyoParksPath);
 }
 
 export async function loadLineNotificationSecrets(projectRoot: string): Promise<LineNotificationSecrets | null> {
@@ -53,6 +71,28 @@ export async function loadLineNotificationSecrets(projectRoot: string): Promise<
 
   const secrets = validateLineNotificationSecrets(raw);
   if (secrets.accessToken === "SET_LOCALLY" || secrets.recipientId === "SET_LOCALLY") {
+    return null;
+  }
+
+  return secrets;
+}
+
+export async function loadWebAppAuthSecrets(projectRoot: string): Promise<WebAppAuthSecrets | null> {
+  const authPath = join(projectRoot, "secrets", "web_app.local.json");
+
+  let raw: Record<string, unknown>;
+  try {
+    raw = await readJsonFile<Record<string, unknown>>(authPath);
+  } catch {
+    return null;
+  }
+
+  const secrets = validateWebAppAuthSecrets(raw);
+  if (
+    secrets.username === "SET_LOCALLY" ||
+    secrets.password === "SET_LOCALLY" ||
+    secrets.sessionSecret === "SET_LOCALLY"
+  ) {
     return null;
   }
 
@@ -79,6 +119,58 @@ function validateTsLeagueSecrets(input: Record<string, unknown>): TsLeagueSecret
   };
 }
 
+async function loadOptionalTokyoParksSecrets(filePath: string): Promise<TokyoParksSecrets | null> {
+  let raw: Record<string, unknown>;
+  try {
+    raw = await readJsonFile<Record<string, unknown>>(filePath);
+  } catch {
+    return null;
+  }
+
+  return validateTokyoParksSecrets(raw);
+}
+
+export async function saveTokyoParksSecrets(projectRoot: string, input: TokyoParksSecrets): Promise<TokyoParksSecrets> {
+  const filePath = join(projectRoot, "secrets", "tokyo_parks.local.json");
+  const normalized = validateTokyoParksSecrets({ tokyoParks: input });
+  await mkdir(join(projectRoot, "secrets"), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify({ tokyoParks: normalized }, null, 2)}\n`, "utf8");
+  return normalized;
+}
+
+function validateTokyoParksSecrets(input: Record<string, unknown>): TokyoParksSecrets {
+  const tokyoParks = (input.tokyoParks ?? input) as Record<string, unknown>;
+  const accounts = Array.isArray(tokyoParks.accounts) ? tokyoParks.accounts : null;
+  if (!accounts || accounts.length === 0) {
+    throw new SecretsError('tokyo_parks.local.json: missing array field "tokyoParks.accounts"');
+  }
+
+  return {
+    baseUrl:
+      typeof tokyoParks.baseUrl === "string" && tokyoParks.baseUrl.trim() !== ""
+        ? tokyoParks.baseUrl
+        : "https://kouen.sports.metro.tokyo.lg.jp/web/index.jsp",
+    accounts: accounts.map((account, index) =>
+      validateTokyoParkAccountSecrets(
+        (account ?? {}) as Record<string, unknown>,
+        `tokyo_parks.local.json.accounts[${index}]`,
+      ),
+    ),
+  };
+}
+
+function validateTokyoParkAccountSecrets(
+  input: Record<string, unknown>,
+  fileLabel: string,
+): TokyoParkAccountSecrets {
+  return {
+    label: assertString(input.label ?? input.userId, `${fileLabel}.label`, fileLabel),
+    userId: assertString(input.userId, `${fileLabel}.userId`, fileLabel),
+    password: assertString(input.password, `${fileLabel}.password`, fileLabel),
+    enabled: typeof input.enabled === "boolean" ? input.enabled : true,
+  };
+}
+
 function validateLineNotificationSecrets(input: Record<string, unknown>): LineNotificationSecrets {
   const notifications = (input.notifications ?? input) as Record<string, unknown>;
   const line = (notifications.line ?? notifications) as Record<string, unknown>;
@@ -92,5 +184,18 @@ function validateLineNotificationSecrets(input: Record<string, unknown>): LineNo
     apiUrl,
     accessToken: assertString(line.accessToken, "line.accessToken", "notifications.local.json"),
     recipientId: assertString(line.recipientId, "line.recipientId", "notifications.local.json"),
+  };
+}
+
+function validateWebAppAuthSecrets(input: Record<string, unknown>): WebAppAuthSecrets {
+  const webApp = (input.webApp ?? input) as Record<string, unknown>;
+  return {
+    username: assertString(webApp.username, "webApp.username", "web_app.local.json"),
+    password: assertString(webApp.password, "webApp.password", "web_app.local.json"),
+    sessionSecret: assertString(webApp.sessionSecret, "webApp.sessionSecret", "web_app.local.json"),
+    cookieName:
+      typeof webApp.cookieName === "string" && webApp.cookieName.trim() !== ""
+        ? webApp.cookieName.trim()
+        : "ts_league_session",
   };
 }

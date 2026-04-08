@@ -1,8 +1,16 @@
 import type { BrowserContext, Page } from "playwright";
 import type { ArtifactStore } from "../infra/artifactStore";
-import type { AppSecrets, AutomationContext, DryRunPreview, JobInput } from "../domain/types";
+import type {
+  AppSecrets,
+  AutomationContext,
+  DryRunPreview,
+  JobInput,
+  ParkLotteryAccountPreview,
+  ParkLotteryEntryPreview,
+} from "../domain/types";
 import type { Browser } from "playwright";
 import { buildMappingPreview, isCommitReady, verifyAppliedMapping } from "../domain/mapping";
+import { buildParkLotteryTargetLabel, isParkLotteryCommitReady, parseParkEntriesText, selectTokyoParkAccounts } from "../domain/parkLottery";
 import { buildPitcherMappingPreview, isPitcherCommitReady, verifyAppliedPitcherMapping } from "../domain/pitcherMapping";
 import { parsePitcherAllocationText } from "../domain/pitcherAllocation";
 import { createBrowser, createContext, createPage } from "./browser";
@@ -15,6 +23,13 @@ import {
   submitTargetForm,
   verifySubmitResult,
 } from "./tsLeagueClient";
+import {
+  loginTokyoParks,
+  logoutTokyoParks,
+  prepareTokyoParkLotteryEntry,
+  submitTokyoParkLotteryEntry,
+  summarizeParkAccount,
+} from "./tokyoParksClient";
 import { applyPitcherMapping, ensurePitcherRowCount, inspectPitcherTargetForm, submitPitcherTargetForm } from "./tsLeaguePitcherClient";
 import { buildTsLeaguePublicGameUrl, resolveSourceGameUrl } from "../utils/url";
 
@@ -60,6 +75,11 @@ export class PlaywrightJobRunner {
       browser = await createBrowser();
       const browserContext = await createContext(browser);
       const page = await createPage(browserContext);
+      if (input.workflow === "park-lottery") {
+        await this.runParkLotteryWorkflow(jobId, input, secrets, context, page);
+        return;
+      }
+
       if (input.workflow === "pitcher") {
         await this.runPitcherWorkflow(jobId, input, secrets, context, browserContext, page);
         return;
@@ -133,6 +153,7 @@ export class PlaywrightJobRunner {
       target: targetPreview,
       mapping,
       pitcher: null,
+      parkLottery: null,
       warnings: [...mapping.warnings],
       commitReady: isCommitReady(mapping),
     };
@@ -271,6 +292,7 @@ export class PlaywrightJobRunner {
         target: targetPreview,
         mapping,
       },
+      parkLottery: null,
       warnings,
       commitReady: isPitcherCommitReady(mapping),
     };
@@ -342,6 +364,224 @@ export class PlaywrightJobRunner {
       saveAttempted: true,
       saved,
       targetGameUrl: page.url(),
+    });
+  }
+
+  private async runParkLotteryWorkflow(
+    jobId: string,
+    input: JobInput,
+    secrets: AppSecrets,
+    context: AutomationContext,
+    page: Page,
+  ): Promise<void> {
+    if (!secrets.tokyoParks) {
+      throw new Error("secrets/tokyo_parks.local.json が不足しています");
+    }
+
+    const entries = parseParkEntriesText(input.parkEntriesText);
+    if (entries.length === 0) {
+      throw new Error("抽選申込みが1件もありません");
+    }
+
+    const accounts = selectTokyoParkAccounts(secrets.tokyoParks.accounts, input.parkAccountSelector);
+    if (accounts.length === 0) {
+      throw new Error("対象アカウントが見つかりません");
+    }
+
+    const accountPreviews: ParkLotteryAccountPreview[] = [];
+    const warnings: string[] = [];
+    let submittedEntryCount = 0;
+    let failedEntryCount = 0;
+
+    for (const account of accounts) {
+      const entryPreviews: ParkLotteryEntryPreview[] = [];
+
+      try {
+        await context.updateLastStep("park.login");
+        await context.log("info", "park.login", "都立公園へログインしています", {
+          account: account.label,
+          userId: account.userId,
+        });
+        await loginTokyoParks(page, secrets.tokyoParks, account);
+        await captureScreenshot(page, this.artifactStore, jobId, `park-login-${account.userId}`, context.attachArtifact);
+
+        for (let index = 0; index < entries.length; index += 1) {
+          const entry = entries[index];
+          try {
+            await context.updateLastStep("park.entry.prepare");
+            await context.log("info", "park.entry.prepare", "抽選申込み内容を確認しています", {
+              account: account.label,
+              entryIndex: index + 1,
+              sport: entry.sportLabel ?? entry.sportClassCode,
+              park: entry.parkName,
+              facility: entry.facilityName,
+              useDate: entry.useDate,
+              startTime: entry.startTime,
+              endTime: entry.endTime,
+              applyNumber: entry.applyNumber,
+            });
+
+            let preparedEntryPreview: ParkLotteryEntryPreview | null = null;
+            let lastPrepareError: Error | null = null;
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+              try {
+                if (attempt > 0) {
+                  await context.log("warn", "park.entry.prepare", "抽選申込み内容の確認を再試行します", {
+                    account: account.label,
+                    entryIndex: index + 1,
+                    attempt: attempt + 1,
+                  });
+                  await page.waitForTimeout(2_000 * (attempt + 1));
+                }
+
+                preparedEntryPreview = {
+                  ...(await prepareTokyoParkLotteryEntry(page, entry)),
+                  entryIndex: index + 1,
+                };
+                break;
+              } catch (error) {
+                lastPrepareError = error instanceof Error ? error : new Error(String(error));
+              }
+            }
+
+            if (!preparedEntryPreview) {
+              throw lastPrepareError ?? new Error("抽選申込み内容の確認に失敗しました");
+            }
+
+            const entryPreview = preparedEntryPreview;
+            await captureScreenshot(
+              page,
+              this.artifactStore,
+              jobId,
+              `park-confirm-${account.userId}-${index + 1}`,
+              context.attachArtifact,
+            );
+
+            if (input.mode === "commit" && entryPreview.status === "ready") {
+              await context.updateLastStep("park.entry.submit");
+              await context.log("info", "park.entry.submit", "抽選申込みを送信しています", {
+                account: account.label,
+                entryIndex: index + 1,
+              });
+              const submittedPreview = await submitTokyoParkLotteryEntry(page, entryPreview);
+              entryPreviews.push(submittedPreview);
+              if (submittedPreview.status === "submitted") {
+                submittedEntryCount += 1;
+              } else {
+                failedEntryCount += 1;
+              }
+              await captureScreenshot(
+                page,
+                this.artifactStore,
+                jobId,
+                `park-submit-${account.userId}-${index + 1}`,
+                context.attachArtifact,
+              );
+            } else {
+              entryPreviews.push(entryPreview);
+              if (entryPreview.status === "ready") {
+                submittedEntryCount += 1;
+              } else {
+                failedEntryCount += 1;
+              }
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            failedEntryCount += 1;
+            warnings.push(`${account.label} ${index + 1}件目: ${message}`);
+            entryPreviews.push({
+              entryIndex: index + 1,
+              status: "failed",
+              pageUrl: page.url(),
+              pageTitle: await page.title().catch(() => null),
+              selectedSportLabel: entry.sportLabel,
+              selectedParkName: entry.parkName,
+              selectedFacilityName: entry.facilityName,
+              selectedDateLabel: entry.useDate,
+              selectedTimeLabel: `${entry.startTime}-${entry.endTime}`,
+              requestedApplyNumber: entry.applyNumber,
+              requestedApplyOptionValue: null,
+              availableApplyOptions: [],
+              warnings: [message],
+            });
+            await captureScreenshot(
+              page,
+              this.artifactStore,
+              jobId,
+              `park-failure-${account.userId}-${index + 1}`,
+              context.attachArtifact,
+            ).catch(() => undefined);
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`${account.label}: ${message}`);
+        for (let index = 0; index < entries.length; index += 1) {
+          entryPreviews.push({
+            entryIndex: index + 1,
+            status: "failed",
+            pageUrl: page.url(),
+            pageTitle: await page.title().catch(() => null),
+            selectedSportLabel: entries[index].sportLabel,
+            selectedParkName: entries[index].parkName,
+            selectedFacilityName: entries[index].facilityName,
+            selectedDateLabel: entries[index].useDate,
+            selectedTimeLabel: `${entries[index].startTime}-${entries[index].endTime}`,
+            requestedApplyNumber: entries[index].applyNumber,
+            requestedApplyOptionValue: null,
+            availableApplyOptions: [],
+            warnings: [message],
+          });
+          failedEntryCount += 1;
+        }
+      } finally {
+        await context.updateLastStep("park.logout");
+        await logoutTokyoParks(page, secrets.tokyoParks.baseUrl).catch(() => undefined);
+      }
+
+      accountPreviews.push(summarizeParkAccount(account, entryPreviews));
+    }
+
+    const preview: DryRunPreview = {
+      workflow: "park-lottery",
+      source: null,
+      target: null,
+      mapping: null,
+      pitcher: null,
+      parkLottery: {
+        requestedAccountSelector: input.parkAccountSelector,
+        requestedEntries: entries,
+        accountPreviews,
+      },
+      warnings: [...warnings],
+      commitReady:
+        input.mode === "commit"
+          ? accountPreviews.every((accountPreview) =>
+              accountPreview.entryPreviews.every((entryPreview) => entryPreview.status !== "failed"),
+            )
+          : isParkLotteryCommitReady(accountPreviews),
+    };
+
+    await context.savePreview(preview);
+    await this.artifactStore.writeJson(jobId, "preview.json", preview);
+    await context.attachArtifact(`${jobId}/preview.json`);
+
+    const targetUrl = secrets.tokyoParks.baseUrl;
+    await context.saveResult({
+      message:
+        input.mode === "commit"
+          ? failedEntryCount === 0
+            ? "都立公園の抽選申込みを送信しました"
+            : "都立公園の抽選申込みは一部失敗しました"
+          : preview.commitReady
+            ? "確認実行が完了し、保存実行に進める状態です"
+            : "確認実行は完了しましたが、申込み前に確認が必要です",
+      sourcePlayerCount: accounts.length,
+      matchedPlayers: submittedEntryCount,
+      unmappedPlayers: failedEntryCount,
+      saveAttempted: input.mode === "commit",
+      saved: input.mode === "commit" && failedEntryCount === 0,
+      targetGameUrl: targetUrl,
     });
   }
 }

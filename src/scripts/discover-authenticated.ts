@@ -45,6 +45,8 @@ async function main() {
         targetOpponent: null,
         targetVenue: null,
         pitcherAllocationText: null,
+        parkAccountSelector: null,
+        parkEntriesText: null,
         mode: "dry-run",
       },
       secrets.orderMade.baseUrl,

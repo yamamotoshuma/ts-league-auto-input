@@ -15,6 +15,7 @@
   const WORKFLOW_LABELS = {
     batter: "野手成績",
     pitcher: "投手成績",
+    "park-lottery": "都立公園抽選",
   };
 
   const LEVEL_LABELS = {
@@ -44,6 +45,10 @@
     "target.submit-form": "保存を実行",
     "target.submit-verified": "完了画面を確認",
     "target.verify-saved": "保存結果を再確認",
+    "park.login": "都立公園へログイン",
+    "park.entry.prepare": "抽選内容を確認",
+    "park.entry.submit": "抽選申込みを送信",
+    "park.logout": "ログアウト",
     "notify.line": "LINE通知",
   };
 
@@ -86,6 +91,17 @@
   }
 
   function resultLabelsForWorkflow(workflow) {
+    if (workflow === "park-lottery") {
+      return {
+        sourcePlayerCount: "対象アカウント数",
+        matchedPlayers: "処理できた申込み数",
+        unmappedPlayers: "失敗した申込み数",
+        saveAttempted: "申込み送信を行ったか",
+        saved: "全件完了したか",
+        targetGameUrl: "対象ページ",
+      };
+    }
+
     return {
       sourcePlayerCount: workflow === "pitcher" ? "入力した投手数" : "取得した選手数",
       matchedPlayers: workflow === "pitcher" ? "対応できた投手数" : "対応できた人数",
@@ -517,6 +533,100 @@
     `;
   }
 
+  function renderParkLotteryRequests(preview) {
+    const entries = preview?.parkLottery?.requestedEntries ?? [];
+    if (entries.length === 0) {
+      return renderEmpty("抽選申込みはまだありません。");
+    }
+
+    return `
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>順番</th>
+              <th>競技</th>
+              <th>公園</th>
+              <th>施設</th>
+              <th>利用日</th>
+              <th>時間</th>
+              <th>申込み番号</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${entries
+              .map(
+                (entry, index) => `
+                  <tr>
+                    <td data-label="順番">${escapeHtml(index + 1)}</td>
+                    <td data-label="競技">${escapeHtml(entry.sportLabel ?? entry.sportClassCode)}</td>
+                    <td data-label="公園">${escapeHtml(entry.parkName)}</td>
+                    <td data-label="施設">${escapeHtml(entry.facilityName)}</td>
+                    <td data-label="利用日">${escapeHtml(entry.useDate)}</td>
+                    <td data-label="時間">${escapeHtml(entry.startTime + " - " + entry.endTime)}</td>
+                    <td data-label="申込み番号">${escapeHtml(entry.applyNumber + "件目")}</td>
+                  </tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderParkLotteryAccounts(preview) {
+    const accounts = preview?.parkLottery?.accountPreviews ?? [];
+    if (accounts.length === 0) {
+      return renderEmpty("アカウント別の確認結果はまだありません。");
+    }
+
+    return `
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>アカウント</th>
+              <th>申込み</th>
+              <th>状態</th>
+              <th>確認内容</th>
+              <th>申込み番号</th>
+              <th>注意事項</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${accounts
+              .flatMap((account) =>
+                (account.entryPreviews ?? []).map(
+                  (entry) => `
+                    <tr>
+                      <td data-label="アカウント">${escapeHtml(account.accountLabel)}<br><span class="muted">${escapeHtml(account.userId)}</span></td>
+                      <td data-label="申込み">${escapeHtml(entry.entryIndex)}</td>
+                      <td data-label="状態">${escapeHtml(entry.status)}</td>
+                      <td data-label="確認内容">${escapeHtml(
+                        [
+                          entry.selectedSportLabel,
+                          entry.selectedParkName,
+                          entry.selectedFacilityName,
+                          entry.selectedDateLabel,
+                          entry.selectedTimeLabel,
+                        ]
+                          .filter(Boolean)
+                          .join(" / ") || "-",
+                      )}</td>
+                      <td data-label="申込み番号">${escapeHtml(
+                        entry.availableApplyOptions.map((option) => option.label).join(" / ") || entry.requestedApplyNumber || "-",
+                      )}</td>
+                      <td data-label="注意事項">${escapeHtml((entry.warnings ?? []).join(" / ") || "なし")}</td>
+                    </tr>`,
+                ),
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   function renderWarnings(job) {
     const warnings = [
       ...(job.preview?.warnings ?? []),
@@ -572,8 +682,9 @@
       return renderEmpty("実行内容の確認結果はまだありません。");
     }
 
+    const readyLabel = workflow === "park-lottery" ? "申込み実行できます" : "保存実行できます";
     const commitState = preview.commitReady
-      ? '<span class="status-chip status-succeeded">保存実行できます</span>'
+      ? `<span class="status-chip status-succeeded">${escapeHtml(readyLabel)}</span>`
       : '<span class="status-chip status-failed">追加の確認が必要です</span>';
 
     return `
@@ -593,7 +704,55 @@
     const sourceDisplay =
       workflow === "pitcher"
         ? job.preview?.pitcher?.source?.sourceUrl || "スカイツリーグ公開試合ページ"
-        : job.sourceUrl || job.sourceGameId || "-";
+        : workflow === "park-lottery"
+          ? "都立公園予約システム"
+          : job.sourceUrl || job.sourceGameId || "-";
+
+    const detailSections =
+      workflow === "pitcher"
+        ? `
+            <section class="subcard">
+              <h3>投手割当</h3>
+              ${renderPitcherAllocations(job.preview)}
+            </section>
+            <section class="subcard">
+              <h3>相手打撃成績の解析結果</h3>
+              ${renderPitcherSource(job.preview)}
+            </section>
+            <section class="subcard">
+              <h3>投手成績の入力予定</h3>
+              ${renderPitcherMapping(job.preview)}
+            </section>
+            <section class="subcard">
+              <h3>反映先投手フォームの内容</h3>
+              ${renderPitcherTargetPreview(job.preview)}
+            </section>
+          `
+        : workflow === "park-lottery"
+          ? `
+              <section class="subcard">
+                <h3>申込み一覧</h3>
+                ${renderParkLotteryRequests(job.preview)}
+              </section>
+              <section class="subcard">
+                <h3>アカウント別結果</h3>
+                ${renderParkLotteryAccounts(job.preview)}
+              </section>
+            `
+          : `
+              <section class="subcard">
+                <h3>取込元の野手成績</h3>
+                ${renderSourceStats(job.preview)}
+              </section>
+              <section class="subcard">
+                <h3>選手の対応付け</h3>
+                ${renderMapping(job.preview)}
+              </section>
+              <section class="subcard">
+                <h3>反映先フォームの内容</h3>
+                ${renderTargetPreview(job.preview)}
+              </section>
+            `;
 
     return `
       ${renderPreviewState(job)}
@@ -611,26 +770,7 @@
             <h3>処理の記録</h3>
             ${renderLogs(job.logs)}
           </section>
-          <section class="subcard">
-            <h3>${escapeHtml(workflow === "pitcher" ? "投手割当" : "取込元の野手成績")}</h3>
-            ${workflow === "pitcher" ? renderPitcherAllocations(job.preview) : renderSourceStats(job.preview)}
-          </section>
-          <section class="subcard">
-            <h3>${escapeHtml(workflow === "pitcher" ? "相手打撃成績の解析結果" : "選手の対応付け")}</h3>
-            ${workflow === "pitcher" ? renderPitcherSource(job.preview) : renderMapping(job.preview)}
-          </section>
-          <section class="subcard">
-            <h3>${escapeHtml(workflow === "pitcher" ? "投手成績の入力予定" : "反映先フォームの内容")}</h3>
-            ${workflow === "pitcher" ? renderPitcherMapping(job.preview) : renderTargetPreview(job.preview)}
-          </section>
-          ${
-            workflow === "pitcher"
-              ? `<section class="subcard">
-                  <h3>反映先投手フォームの内容</h3>
-                  ${renderPitcherTargetPreview(job.preview)}
-                </section>`
-              : ""
-          }
+          ${detailSections}
         </div>
         <aside class="detail-side">
           <section class="subcard">
@@ -693,6 +833,10 @@
 
     if (workflow === "pitcher") {
       ensurePitcherRows(form);
+    }
+
+    if (workflow === "park-lottery") {
+      ensureParkEntryRows(form);
     }
   }
 
@@ -793,9 +937,48 @@
     return Array.from(form.querySelectorAll("[data-pitcher-row]"));
   }
 
+  function getParkEntryEditorElements(form) {
+    return {
+      rowsRoot: form.querySelector("#park-entry-rows"),
+      template: form.querySelector("#park-entry-template"),
+      hiddenInput: form.querySelector("#park-entries-text"),
+      addButton: form.querySelector("#park-entry-add"),
+      shiftCurrentMonthButton: form.querySelector("#park-entry-shift-current-month"),
+    };
+  }
+
+  function listParkEntryRows(form) {
+    return Array.from(form.querySelectorAll("[data-park-entry-row]"));
+  }
+
+  function getParkAccountEditorElements(form) {
+    return {
+      rowsRoot: form.querySelector("#park-account-rows"),
+      template: form.querySelector("#park-account-template"),
+      hiddenInput: form.querySelector("#park-account-selector"),
+      seedInput: form.querySelector("#park-account-seed"),
+      addButton: form.querySelector("#park-account-add"),
+      saveButton: form.querySelector("#park-account-save"),
+      statusElement: form.querySelector("#park-account-save-status"),
+    };
+  }
+
+  function listParkAccountRows(form) {
+    return Array.from(form.querySelectorAll("[data-park-account-row]"));
+  }
+
   function updatePitcherRowIndices(form) {
     listPitcherRows(form).forEach(function (row, index) {
       const marker = row.querySelector("[data-pitcher-index]");
+      if (marker) {
+        marker.textContent = String(index + 1);
+      }
+    });
+  }
+
+  function updateParkEntryIndices(form) {
+    listParkEntryRows(form).forEach(function (row, index) {
+      const marker = row.querySelector("[data-park-entry-index]");
       if (marker) {
         marker.textContent = String(index + 1);
       }
@@ -836,6 +1019,235 @@
     if (listPitcherRows(form).length === 0) {
       createPitcherRow(form);
     }
+  }
+
+  function createParkEntryRow(form, values) {
+    const elements = getParkEntryEditorElements(form);
+    if (!elements.rowsRoot || !elements.template) {
+      return null;
+    }
+
+    const fragment = elements.template.content.cloneNode(true);
+    const row = fragment.querySelector("[data-park-entry-row]");
+    if (!row) {
+      return null;
+    }
+
+    const sportInput = row.querySelector("[data-park-sport]");
+    const parkNameInput = row.querySelector("[data-park-name]");
+    const facilityInput = row.querySelector("[data-park-facility]");
+    const dateInput = row.querySelector("[data-park-date]");
+    const startInput = row.querySelector("[data-park-start]");
+    const endInput = row.querySelector("[data-park-end]");
+    const applyNumberInput = row.querySelector("[data-park-apply-number]");
+    const formatDateValue = function (value) {
+      const normalized = String(value || "").trim();
+      const digits = normalized.replace(/[^\d]/g, "");
+      if (digits.length === 8) {
+        return digits.slice(0, 4) + "-" + digits.slice(4, 6) + "-" + digits.slice(6, 8);
+      }
+      return normalized;
+    };
+    const formatTimeValue = function (value) {
+      const normalized = String(value || "").trim();
+      const digits = normalized.replace(/[^\d]/g, "");
+      if (digits.length === 3) {
+        return "0" + digits.slice(0, 1) + ":" + digits.slice(1, 3);
+      }
+      if (digits.length === 4) {
+        return digits.slice(0, 2) + ":" + digits.slice(2, 4);
+      }
+      return normalized;
+    };
+    if (sportInput) {
+      sportInput.value = values?.sportClassCode || "100";
+    }
+    if (parkNameInput) {
+      parkNameInput.value = values?.parkName || "浮間公園";
+    }
+    if (facilityInput) {
+      facilityInput.value = values?.facilityName || "";
+    }
+    if (dateInput) {
+      dateInput.value = formatDateValue(values?.useDate);
+    }
+    if (startInput) {
+      startInput.value = formatTimeValue(values?.startTime);
+    }
+    if (endInput) {
+      endInput.value = formatTimeValue(values?.endTime);
+    }
+    if (applyNumberInput) {
+      applyNumberInput.value = values?.applyNumber || "1";
+    }
+
+    elements.rowsRoot.appendChild(fragment);
+    updateParkEntryIndices(form);
+    return elements.rowsRoot.lastElementChild;
+  }
+
+  function ensureParkEntryRows(form) {
+    if (listParkEntryRows(form).length === 0) {
+      createParkEntryRow(form);
+    }
+  }
+
+  function createParkAccountRow(form, values) {
+    const elements = getParkAccountEditorElements(form);
+    if (!elements.rowsRoot || !elements.template) {
+      return null;
+    }
+
+    const fragment = elements.template.content.cloneNode(true);
+    const row = fragment.querySelector("[data-park-account-row]");
+    if (!row) {
+      return null;
+    }
+
+    const labelInput = row.querySelector("[data-park-account-label]");
+    const userIdInput = row.querySelector("[data-park-account-user-id]");
+    const passwordInput = row.querySelector("[data-park-account-password]");
+    const enabledInput = row.querySelector("[data-park-account-enabled]");
+    const useInput = row.querySelector("[data-park-account-use]");
+    if (labelInput) {
+      labelInput.value = values?.label || "";
+    }
+    if (userIdInput) {
+      userIdInput.value = values?.userId || "";
+    }
+    if (passwordInput) {
+      passwordInput.value = values?.password || "";
+    }
+    if (enabledInput) {
+      enabledInput.checked = values?.enabled !== false;
+    }
+    if (useInput) {
+      useInput.checked = values?.use !== false && values?.enabled !== false;
+    }
+
+    elements.rowsRoot.appendChild(fragment);
+    return elements.rowsRoot.lastElementChild;
+  }
+
+  function ensureParkAccountRows(form) {
+    if (listParkAccountRows(form).length === 0) {
+      createParkAccountRow(form);
+    }
+  }
+
+  function collectParkAccounts(form) {
+    const rows = listParkAccountRows(form)
+      .map(function (row) {
+        const account = {
+          label: String(row.querySelector("[data-park-account-label]")?.value || "").trim(),
+          userId: String(row.querySelector("[data-park-account-user-id]")?.value || "").trim(),
+          password: String(row.querySelector("[data-park-account-password]")?.value || "").trim(),
+          enabled: Boolean(row.querySelector("[data-park-account-enabled]")?.checked),
+          use: Boolean(row.querySelector("[data-park-account-use]")?.checked),
+        };
+        const hasAnyValue = Boolean(account.label || account.userId || account.password);
+        const isComplete = Boolean(account.label && account.userId && account.password);
+        row.toggleAttribute("data-invalid", Boolean(hasAnyValue && !isComplete));
+        return { account, hasAnyValue, isComplete };
+      })
+      .filter(function (item) {
+        return item.hasAnyValue;
+      });
+
+    return {
+      isValid: rows.every(function (item) { return item.isComplete; }),
+      hasAccounts: rows.length > 0,
+      accounts: rows.map(function (item) {
+        return {
+          label: item.account.label,
+          userId: item.account.userId,
+          password: item.account.password,
+          enabled: item.account.enabled,
+          use: item.account.use,
+        };
+      }),
+    };
+  }
+
+  function syncParkAccountSelector(form) {
+    const elements = getParkAccountEditorElements(form);
+    if (!elements.hiddenInput) {
+      return { hasSelectedAccounts: false };
+    }
+
+    const state = collectParkAccounts(form);
+    const selectedUserIds = state.accounts
+      .filter(function (account) {
+        return account.enabled && account.use && account.userId;
+      })
+      .map(function (account) {
+        return account.userId;
+      });
+
+    elements.hiddenInput.value = selectedUserIds.join(",");
+    return {
+      hasSelectedAccounts: selectedUserIds.length > 0,
+      isValid: state.isValid,
+      hasAccounts: state.hasAccounts,
+    };
+  }
+
+  function getWeekdayOccurrence(date) {
+    const weekday = date.getDay();
+    let occurrence = 0;
+    const cursor = new Date(date.getFullYear(), date.getMonth(), 1, 12, 0, 0, 0);
+    while (cursor <= date) {
+      if (cursor.getDay() === weekday) {
+        occurrence += 1;
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return occurrence;
+  }
+
+  function findNthWeekdayInMonth(year, monthIndex, weekday, occurrence) {
+    const matches = [];
+    const cursor = new Date(year, monthIndex, 1, 12, 0, 0, 0);
+    while (cursor.getMonth() === monthIndex) {
+      if (cursor.getDay() === weekday) {
+        matches.push(new Date(cursor));
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return matches[Math.min(Math.max(occurrence - 1, 0), matches.length - 1)] || null;
+  }
+
+  function formatInputDate(date) {
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return year + "-" + month + "-" + day;
+  }
+
+  function shiftParkEntriesToCurrentMonth(form) {
+    const today = new Date();
+    const targetYear = today.getFullYear();
+    const targetMonth = today.getMonth();
+    listParkEntryRows(form).forEach(function (row) {
+      const dateInput = row.querySelector("[data-park-date]");
+      if (!(dateInput instanceof HTMLInputElement) || !dateInput.value) {
+        return;
+      }
+
+      const sourceDate = new Date(dateInput.value + "T12:00:00");
+      if (Number.isNaN(sourceDate.getTime())) {
+        return;
+      }
+
+      const occurrence = getWeekdayOccurrence(sourceDate);
+      const shiftedDate = findNthWeekdayInMonth(targetYear, targetMonth, sourceDate.getDay(), occurrence);
+      if (!shiftedDate) {
+        return;
+      }
+
+      dateInput.value = formatInputDate(shiftedDate);
+    });
   }
 
   function syncPitcherAllocation(form) {
@@ -896,6 +1308,111 @@
     };
   }
 
+  function syncParkEntries(form) {
+    const elements = getParkEntryEditorElements(form);
+    if (!elements.hiddenInput) {
+      return { isValid: true, hasEntries: false };
+    }
+
+    const rows = listParkEntryRows(form)
+      .map(function (row) {
+        const entry = {
+          sportClassCode: String(row.querySelector("[data-park-sport]")?.value || "").trim(),
+          parkName: String(row.querySelector("[data-park-name]")?.value || "").trim(),
+          facilityName: String(row.querySelector("[data-park-facility]")?.value || "").trim(),
+          useDate: String(row.querySelector("[data-park-date]")?.value || "").trim(),
+          startTime: String(row.querySelector("[data-park-start]")?.value || "").trim(),
+          endTime: String(row.querySelector("[data-park-end]")?.value || "").trim(),
+          applyNumber: String(row.querySelector("[data-park-apply-number]")?.value || "").trim(),
+        };
+        const hasAnyValue = Object.values(entry).some(Boolean);
+        const isComplete = Object.values(entry).every(Boolean);
+        row.toggleAttribute("data-invalid", Boolean(hasAnyValue && !isComplete));
+        return { entry, hasAnyValue, isComplete };
+      })
+      .filter(function (item) {
+        return item.hasAnyValue;
+      });
+
+    if (rows.some(function (item) { return !item.isComplete; })) {
+      elements.hiddenInput.value = "";
+      return {
+        isValid: false,
+        hasEntries: true,
+        message: "競技、公園、施設、日付、時間、申込み番号を入力してください。",
+      };
+    }
+
+    elements.hiddenInput.value = JSON.stringify(rows.map(function (item) { return item.entry; }));
+    return {
+      isValid: true,
+      hasEntries: rows.length > 0,
+    };
+  }
+
+  async function persistParkAccounts(form, errorElement, silent) {
+    const elements = getParkAccountEditorElements(form);
+    if (!elements.saveButton || !elements.statusElement) {
+      return true;
+    }
+
+    const state = collectParkAccounts(form);
+    syncParkAccountSelector(form);
+    if (!state.isValid) {
+      if (!silent && errorElement) {
+        errorElement.textContent = "アカウントの表示名、利用者番号、パスワードを入力してください。";
+      }
+      elements.statusElement.textContent = "未保存";
+      return false;
+    }
+
+    if (!state.hasAccounts) {
+      if (!silent && errorElement) {
+        errorElement.textContent = "アカウントを1件以上入力してください。";
+      }
+      elements.statusElement.textContent = "未保存";
+      return false;
+    }
+
+    elements.saveButton.disabled = true;
+    elements.statusElement.textContent = "保存中...";
+    try {
+      const response = await fetch("/api/parks/accounts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accounts: state.accounts.map(function (account) {
+            return {
+              label: account.label,
+              userId: account.userId,
+              password: account.password,
+              enabled: account.enabled,
+            };
+          }),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (!silent && errorElement) {
+          errorElement.textContent = data.error || "アカウントを保存できませんでした。";
+        }
+        elements.statusElement.textContent = "保存失敗";
+        return false;
+      }
+
+      elements.statusElement.textContent = "保存しました";
+      return true;
+    } catch (_error) {
+      if (!silent && errorElement) {
+        errorElement.textContent = "アカウント保存中に通信エラーが発生しました。";
+      }
+      elements.statusElement.textContent = "保存失敗";
+      return false;
+    } finally {
+      elements.saveButton.disabled = false;
+    }
+  }
+
   function initPitcherAllocationEditor(form, errorElement) {
     const elements = getPitcherEditorElements(form);
     if (!elements.rowsRoot || !elements.template || !elements.hiddenInput || !elements.addButton) {
@@ -951,6 +1468,155 @@
     });
   }
 
+  function initParkEntryEditor(form, errorElement) {
+    const elements = getParkEntryEditorElements(form);
+    if (!elements.rowsRoot || !elements.template || !elements.hiddenInput || !elements.addButton) {
+      return;
+    }
+
+    let initialRows = [];
+    try {
+      initialRows = JSON.parse(elements.hiddenInput.value || "[]");
+    } catch (_error) {
+      initialRows = [];
+    }
+
+    if (Array.isArray(initialRows) && initialRows.length > 0) {
+      initialRows.forEach(function (row) {
+        createParkEntryRow(form, row);
+      });
+    } else {
+      createParkEntryRow(form);
+    }
+
+    elements.addButton.addEventListener("click", function () {
+      const row = createParkEntryRow(form);
+      if (row) {
+        const firstInput = row.querySelector("input, select");
+        firstInput?.focus();
+      }
+      syncParkEntries(form);
+    });
+
+    elements.shiftCurrentMonthButton?.addEventListener("click", function () {
+      shiftParkEntriesToCurrentMonth(form);
+      syncParkEntries(form);
+      if (errorElement && errorElement.textContent === "競技、公園、施設、日付、時間、申込み番号を入力してください。") {
+        errorElement.textContent = "";
+      }
+    });
+
+    elements.rowsRoot.addEventListener("click", function (event) {
+      const button = event.target.closest("[data-park-entry-remove]");
+      if (!button) {
+        return;
+      }
+
+      const row = button.closest("[data-park-entry-row]");
+      row?.remove();
+      ensureParkEntryRows(form);
+      updateParkEntryIndices(form);
+      syncParkEntries(form);
+      if (errorElement && errorElement.textContent === "競技、公園、施設、日付、時間、申込み番号を入力してください。") {
+        errorElement.textContent = "";
+      }
+    });
+
+    elements.rowsRoot.addEventListener("input", function () {
+      syncParkEntries(form);
+      if (errorElement && errorElement.textContent === "競技、公園、施設、日付、時間、申込み番号を入力してください。") {
+        errorElement.textContent = "";
+      }
+    });
+
+    elements.rowsRoot.addEventListener("change", function () {
+      syncParkEntries(form);
+      if (errorElement && errorElement.textContent === "競技、公園、施設、日付、時間、申込み番号を入力してください。") {
+        errorElement.textContent = "";
+      }
+    });
+  }
+
+  function initParkAccountEditor(form, errorElement) {
+    const elements = getParkAccountEditorElements(form);
+    if (!elements.rowsRoot || !elements.template || !elements.hiddenInput || !elements.seedInput || !elements.addButton || !elements.saveButton) {
+      return;
+    }
+
+    let initialRows = [];
+    try {
+      initialRows = JSON.parse(elements.seedInput.value || "[]");
+    } catch (_error) {
+      initialRows = [];
+    }
+
+    if (Array.isArray(initialRows) && initialRows.length > 0) {
+      initialRows.forEach(function (row) {
+        createParkAccountRow(form, {
+          label: row.label,
+          userId: row.userId,
+          password: row.password,
+          enabled: row.enabled !== false,
+          use: row.enabled !== false,
+        });
+      });
+    } else {
+      createParkAccountRow(form);
+    }
+
+    syncParkAccountSelector(form);
+
+    elements.addButton.addEventListener("click", function () {
+      const row = createParkAccountRow(form);
+      if (row) {
+        row.querySelector("input")?.focus();
+      }
+      syncParkAccountSelector(form);
+      if (elements.statusElement) {
+        elements.statusElement.textContent = "未保存";
+      }
+    });
+
+    elements.rowsRoot.addEventListener("click", function (event) {
+      const button = event.target.closest("[data-park-account-remove]");
+      if (!button) {
+        return;
+      }
+
+      const row = button.closest("[data-park-account-row]");
+      row?.remove();
+      ensureParkAccountRows(form);
+      syncParkAccountSelector(form);
+      if (elements.statusElement) {
+        elements.statusElement.textContent = "未保存";
+      }
+    });
+
+    elements.rowsRoot.addEventListener("input", function () {
+      syncParkAccountSelector(form);
+      if (elements.statusElement) {
+        elements.statusElement.textContent = "未保存";
+      }
+      if (errorElement && errorElement.textContent === "アカウントの表示名、利用者番号、パスワードを入力してください。") {
+        errorElement.textContent = "";
+      }
+    });
+
+    elements.rowsRoot.addEventListener("change", function () {
+      syncParkAccountSelector(form);
+      if (elements.statusElement) {
+        elements.statusElement.textContent = "未保存";
+      }
+    });
+
+    elements.saveButton.addEventListener("click", async function () {
+      if (errorElement) {
+        errorElement.textContent = "";
+      }
+      await persistParkAccounts(form, errorElement, false);
+    });
+  }
+
   async function initJobForm() {
     const form = document.getElementById("job-form");
     if (!form) {
@@ -960,6 +1626,8 @@
     const errorElement = document.getElementById("job-form-error");
     const submitButton = document.getElementById("job-submit-button");
     initPitcherAllocationEditor(form, errorElement);
+    initParkAccountEditor(form, errorElement);
+    initParkEntryEditor(form, errorElement);
     form.addEventListener("input", function (event) {
       const field = event.target;
       if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) {
@@ -977,11 +1645,15 @@
       updateWorkflowSections(form);
       updateModeNotice(form);
       syncPitcherAllocation(form);
+      syncParkEntries(form);
+      syncParkAccountSelector(form);
     });
     updateSelectedModeOptions(form);
     updateWorkflowSections(form);
     updateModeNotice(form);
     syncPitcherAllocation(form);
+    syncParkEntries(form);
+    syncParkAccountSelector(form);
 
     form.addEventListener("submit", async function (event) {
       event.preventDefault();
@@ -992,6 +1664,8 @@
       try {
         const workflow = new FormData(form).get("workflow");
         const pitcherState = syncPitcherAllocation(form);
+        const parkState = syncParkEntries(form);
+        const parkAccountState = syncParkAccountSelector(form);
         if (workflow === "pitcher") {
           if (!pitcherState.isValid) {
             errorElement.textContent = pitcherState.message || "投手割当を確認してください。";
@@ -999,6 +1673,29 @@
           }
           if (!pitcherState.hasAllocations) {
             errorElement.textContent = "投手を1人以上入力してください。";
+            return;
+          }
+        }
+        if (workflow === "park-lottery") {
+          const savedAccounts = await persistParkAccounts(form, errorElement, true);
+          if (!savedAccounts) {
+            errorElement.textContent = errorElement.textContent || "アカウント設定を確認してください。";
+            return;
+          }
+          if (!parkState.isValid) {
+            errorElement.textContent = parkState.message || "抽選申込みを確認してください。";
+            return;
+          }
+          if (!parkState.hasEntries) {
+            errorElement.textContent = "抽選申込みを1件以上入力してください。";
+            return;
+          }
+          if (!parkAccountState.isValid) {
+            errorElement.textContent = "アカウントの表示名、利用者番号、パスワードを入力してください。";
+            return;
+          }
+          if (!parkAccountState.hasSelectedAccounts) {
+            errorElement.textContent = "今回使うアカウントを1件以上選択してください。";
             return;
           }
         }

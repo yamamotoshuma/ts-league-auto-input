@@ -15,6 +15,7 @@ Observed on 2026-03-17 and updated on 2026-03-21. This document now includes aut
 | Source login | `https://ordermade.sakura.ne.jp/kanri/login` | Server-rendered login page with a normal HTML `POST` form and a hidden CSRF token. A JS bundle is also loaded. | Confirmed |
 | Target login | `https://ts-league.com/team/order-made/login.php` | Plain HTML login page with a normal HTML `POST` form to `../../pass/pass_check.php`. | Confirmed |
 | Target game list | `https://ts-league.com/team/order-made/game.php` | Unauthenticated `GET` returned `302` to `logout.php`; final page displayed `セッションがタイムアウトしました。`. The authenticated game list DOM was not observable. | Confirmed |
+| グラウンドトップ | `https://kouen.sports.metro.tokyo.lg.jp/web/index.jsp` | ログイン導線はトップページの `ログイン` ボタンから辿るのが安定した。 | Confirmed |
 
 ## Authenticated discovery summary
 
@@ -261,6 +262,97 @@ Confirmed against the approved live match `3/7/9:00-光が丘公園`.
 - On `2026-03-07 Ｒｅ`, opponent batting rows were present and consistent with the already-saved pitcher totals.
 - On `2026-03-21 プレアデス`, the page still showed `まだ試合情報が登録されていません。` and the opponent batting table was not present.
 - This means pitcher automation must fail closed when the public page does not yet expose opponent batting detail.
+
+## グラウンド 抽選 discovery
+
+Observed on 2026-04-08 with the sample account supplied locally.
+
+### 画面遷移
+
+1. `GET /web/index.jsp`
+2. `#btn-login` から `rsvWTransUserLoginAction.do`
+3. `#userId`, `#password`, `#btn-go` でログイン
+4. ログイン後ホーム `rsvWUserAttestationLoginAction.do` から `抽選申込み`
+5. `lotWOpeLotSearchAction.do` の抽選分類一覧で `doLotEntry("<分類コード>")` を実行
+6. `lotWOpeTransLotInstSrchVacantAction.do` で公園 / 施設 / 利用日 / コマ選択
+7. `#btn-go` で `lotWInstTempLotApplyAction.do`
+8. 確認画面で `applyHopeNo` に `1件目 / 2件目` を指定
+9. `#btn-go` で最終申込み送信
+10. ログアウトして次アカウント
+
+### 主要 URL
+
+- トップ: `https://kouen.sports.metro.tokyo.lg.jp/web/index.jsp`
+- ログイン: `https://kouen.sports.metro.tokyo.lg.jp/web/rsvWTransUserLoginAction.do`
+- 抽選分類一覧: `lotWOpeLotSearchAction.do`
+- 空き検索 / コマ選択: `lotWOpeTransLotInstSrchVacantAction.do`
+- 申込み確認: `lotWInstTempLotApplyAction.do`
+- ログアウト action: `gRsvWTransUserAttestationEndAction`
+
+補足:
+
+- ログイン後ホームにも `#daystart-home` などの空き検索フォームがあるが、抽選申込み workflow では使わない。
+- 抽選は必ず `抽選申込み -> 抽選分類一覧 -> doLotEntry("<分類コード>")` の順で遷移するのが安定した。
+
+### 主要セレクタ候補
+
+- ログインボタン: `#btn-login`
+- 利用者番号: `#userId`
+- パスワード: `#password`
+- ログイン送信: `#btn-go`
+- 公園 select: `#bname`
+- 施設 select: `#iname`
+- 利用日テーブル: `#usedate-table`
+- 次週: `#next-week`
+- 前週: `#last-week`
+- 申込み番号 select: `#apply`
+
+### 競技分類コード
+
+- `100`: 野球
+- `110`: 野球（小）
+- `120`: テニス（ハード）
+- `130`: テニス（人工芝）
+- `140`: サッカー・ラグビー・ホッケー
+- `150`: サッカー（小）
+
+### コマ選択の観測結果
+
+- テーブルセル内に hidden input が埋まっている。
+- 利用日: `selectUseYMD`
+- コマ番号: `selectKomaNo`
+- 開始時刻: `selectStime`
+- 終了時刻: `selectEtime`
+- 面情報: `selectField`
+- 同じ日付内で連続するコマをクリックして範囲選択する作り。
+
+### 1件目 / 2件目の観測結果
+
+- 申込み確認画面の `select#apply[name="applyHopeNo"]` で選択する。
+- 観測できた option:
+  - `0-0`: 選択してください
+  - `1-1`: 申込み1件目
+  - `2-1`: 申込み2件目
+- つまり UI では `申込み番号` を明示的に持たせる必要がある。
+
+### 複数アカウント運用の観測結果
+
+- ログイン後は同一アカウントで複数件を続けて処理できる。
+- したがって自動化の基本ループは
+  - 1アカウントで申込み一覧を上から順に全部処理
+  - ログアウト
+  - 次アカウントへ移行
+  の順が自然。
+- 野球、サッカーなど競技が違っても、同一アカウント内でそのまま継続処理する。
+
+### 想定失敗パターン
+
+- ログイン状態が切れてトップへ戻る
+- 公園 / 施設名が option と一致しない
+- 指定日が表示期間に無い
+- 指定時間帯の連続コマが取れない
+- `1件目 / 2件目` の希望枠が選べない
+- 完了画面の文言が画面差分で取りづらい
 
 ## Unauthenticated screen transitions
 

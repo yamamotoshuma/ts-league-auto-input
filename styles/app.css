@@ -97,6 +97,21 @@ textarea,
   padding: 28px 24px 44px;
 }
 
+.shell-auth {
+  display: grid;
+  min-height: 100vh;
+  align-items: center;
+  max-width: 560px;
+}
+
+.auth-panel {
+  width: 100%;
+}
+
+.auth-form {
+  max-width: 420px;
+}
+
 .header-copy,
 .job-hero-meta,
 .detail-main,
@@ -147,6 +162,12 @@ textarea,
   border-radius: 999px;
   text-decoration: none;
   background: rgba(255, 255, 255, 0.04);
+}
+
+.header-nav {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .panel,
@@ -280,6 +301,10 @@ pre {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   gap: 16px;
+}
+
+.workflow-grid-park {
+  grid-template-columns: 1fr;
 }
 
 .workflow-block {
@@ -464,6 +489,21 @@ pre {
   gap: 10px;
 }
 
+.park-entry-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.park-account-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.park-account-rows {
+  display: grid;
+  gap: 10px;
+}
+
 .pitcher-row {
   display: grid;
   grid-template-columns: 48px minmax(0, 1.3fr) minmax(88px, 0.5fr) minmax(110px, 0.55fr) auto;
@@ -473,6 +513,87 @@ pre {
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.035);
+  min-width: 620px;
+}
+
+.park-entry-row {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.park-account-row {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.park-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.park-row-header-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.park-row-header-main strong {
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.park-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.park-form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.park-entry-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.park-account-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.park-field-span-full {
+  grid-column: 1 / -1;
+}
+
+.park-entry-row:hover {
+  border-color: var(--line-strong);
+}
+
+.park-account-row:hover {
+  border-color: var(--line-strong);
+}
+
+.park-entry-row[data-invalid] {
+  border-color: rgba(255, 107, 107, 0.34);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.park-account-row[data-invalid] {
+  border-color: rgba(255, 107, 107, 0.34);
+  background: rgba(255, 107, 107, 0.08);
 }
 
 .pitcher-row:hover {
@@ -506,6 +627,29 @@ pre {
   font-weight: 700;
   letter-spacing: 0;
   color: var(--muted);
+}
+
+.park-account-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.park-account-toggle span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.park-account-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
 }
 
 .pitcher-cell-small input {
@@ -888,6 +1032,11 @@ code {
     grid-template-columns: 40px minmax(0, 1fr) 88px 104px auto;
   }
 
+  .park-entry-grid,
+  .park-account-grid {
+    grid-template-columns: 1fr;
+  }
+
   .detail-side {
     order: -1;
   }
@@ -929,6 +1078,16 @@ code {
   .pitcher-row-index {
     justify-content: flex-start;
     padding: 0 14px;
+  }
+
+  .park-row-header,
+  .park-row-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .park-account-toggle {
+    justify-content: center;
   }
 
   .summary-banner,

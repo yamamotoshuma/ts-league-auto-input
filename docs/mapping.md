@@ -226,3 +226,52 @@ Observed public-page nuance:
 - If the public page does not expose the opponent batting detail table, stop and require review.
 - If the user enters any partial-inning allocation, keep the run as dry-run only.
 - Save success must be verified by reopening `gamedf_edit.php` and checking the persisted values.
+
+## グラウンド抽選 workflow
+
+Observed on 2026-04-08 from the logged-in park reservation site.
+
+### Normalized lottery input
+
+```ts
+type ParkLotteryEntryInput = {
+  sportClassCode: string;
+  sportLabel: string | null;
+  parkName: string;
+  facilityName: string;
+  useDate: string;   // YYYYMMDD
+  startTime: string; // HHMM
+  endTime: string;   // HHMM
+  applyNumber: string; // "1" or "2"
+};
+```
+
+### UI to site mapping
+
+| UI field | Site field / action | Current policy |
+| --- | --- | --- |
+| `競技` | `doLotEntry("<classCode>")` | 分類コードで遷移 |
+| `公園` | `#bname` | ラベル一致で select |
+| `施設` | `#iname` | ラベル一致で select |
+| `日付` | `selectUseYMD` | 週送りしながら対象日を探す |
+| `開始 / 終了` | `selectStime` / `selectEtime` | 連続コマを順にクリック |
+| `申込み番号` | `#apply[name="applyHopeNo"]` | `1件目` or `2件目` を選ぶ |
+
+### Account loop policy
+
+- 同一アカウントでは、指定された申込み一覧を上から順に全部処理してからログアウトする。
+- その後で次アカウントへ移る。
+- 競技が違う申込みも同じアカウント内で続けて処理する。
+- したがって runner の順序は:
+  1. ログイン
+  2. 申込み1件目
+  3. 申込み2件目
+  4. ...
+  5. ログアウト
+  6. 次アカウント
+
+### Commit safety rules for park workflow
+
+- `公園`, `施設`, `日付`, `時間帯`, `申込み番号` のどれかが選べないときだけ失敗扱いにする。
+- 同一アカウントで前の申込み完了画面に残らず、毎回トップから抽選導線へ入り直して次の申込みを処理する。
+- `申込み番号` は確認画面に出た option を優先し、希望枠が無ければ失敗扱いにする。
