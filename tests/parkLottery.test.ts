@@ -3,6 +3,7 @@ import {
   buildApplyHopeValue,
   buildParkLotteryTargetLabel,
   getParkSportLabel,
+  isParkLotterySubmissionComplete,
   normalizeParkTimeValue,
   normalizeParkUseDate,
   parseParkEntriesText,
@@ -76,5 +77,23 @@ describe("parkLottery helpers", () => {
     expect(shiftParkUseDateToNextBookingMonth("20260418", new Date("2026-04-05T12:00:00+09:00"))).toBe("20260516");
     expect(shiftParkUseDateToNextBookingMonth("20261219", new Date("2026-12-05T12:00:00+09:00"))).toBe("20270116");
     expect(shiftParkUseDateToNextBookingMonth("20260531", new Date("2026-05-05T12:00:00+09:00"))).toBe("20260628");
+  });
+
+  it("requires explicit completion markers after final submission", () => {
+    expect(
+      isParkLotterySubmissionComplete(
+        "https://kouen.sports.metro.tokyo.lg.jp/web/lotWInstLotApplyAction.do",
+        "都立公園スポーツレクリエーション予約システム 申込内容確認画面",
+        "申込み内容をご確認ください。",
+      ),
+    ).toBe(false);
+
+    expect(
+      isParkLotterySubmissionComplete(
+        "https://kouen.sports.metro.tokyo.lg.jp/web/lotWInstLotApplyAction.do",
+        "都立公園スポーツレクリエーション予約システム",
+        "抽選申込み完了 続けて申込み",
+      ),
+    ).toBe(true);
   });
 });

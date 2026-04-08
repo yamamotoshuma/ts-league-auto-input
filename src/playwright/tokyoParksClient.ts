@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import { buildApplyHopeValue, getParkSportLabel } from "../domain/parkLottery";
+import { buildApplyHopeValue, getParkSportLabel, isParkLotterySubmissionComplete } from "../domain/parkLottery";
 import type {
   ParkLotteryAccountPreview,
   ParkLotteryApplyOption,
@@ -618,17 +618,16 @@ export async function submitTokyoParkLotteryEntry(
 
   const title = await page.title().catch(() => null);
   const bodyText = await page.locator("body").innerText().catch(() => "");
-  const normalizedBody = bodyText.replace(/\s+/g, " ").trim();
-  const looksSuccessful =
-    !page.url().includes("lotWInstTempLotApplyAction.do") ||
-    /完了|受付|受け付け|申込みました|申込みを行いました/.test(normalizedBody);
+  const looksSuccessful = isParkLotterySubmissionComplete(page.url(), title, bodyText);
 
   return {
     ...entryPreview,
     status: looksSuccessful ? "submitted" : "failed",
     pageUrl: page.url(),
     pageTitle: title,
-    warnings: looksSuccessful ? entryPreview.warnings : [...entryPreview.warnings, "保存完了を明確に確認できませんでした"],
+    warnings: looksSuccessful
+      ? entryPreview.warnings
+      : [...entryPreview.warnings, "抽選申込み完了画面を確認できませんでした"],
   };
 }
 

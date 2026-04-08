@@ -120,6 +120,28 @@ export function buildApplyHopeValue(applyNumber: string | null | undefined): str
   return `${normalized}-1`;
 }
 
+export function isParkLotterySubmissionComplete(
+  pageUrl: string | null | undefined,
+  pageTitle: string | null | undefined,
+  bodyText: string | null | undefined,
+): boolean {
+  const normalizedUrl = String(pageUrl ?? "");
+  const normalizedTitle = String(pageTitle ?? "").replace(/\s+/g, " ").trim();
+  const normalizedBody = String(bodyText ?? "").replace(/\s+/g, " ").trim();
+
+  if (!normalizedUrl || normalizedUrl.includes("lotWInstTempLotApplyAction.do")) {
+    return false;
+  }
+
+  if (/申込内容確認画面/.test(normalizedTitle)) {
+    return false;
+  }
+
+  return /抽選申込み完了|申込み完了|申込みが完了|申込みを受け付けました|抽選申込みを受け付けました|続けて申込み/.test(
+    normalizedBody,
+  );
+}
+
 function parseNormalizedParkDate(value: string): Date | null {
   if (!/^\d{8}$/.test(value)) {
     return null;
