@@ -943,7 +943,7 @@
       template: form.querySelector("#park-entry-template"),
       hiddenInput: form.querySelector("#park-entries-text"),
       addButton: form.querySelector("#park-entry-add"),
-      shiftCurrentMonthButton: form.querySelector("#park-entry-shift-current-month"),
+      shiftNextMonthButton: form.querySelector("#park-entry-shift-next-month"),
     };
   }
 
@@ -1225,28 +1225,55 @@
     return year + "-" + month + "-" + day;
   }
 
-  function shiftParkEntriesToCurrentMonth(form) {
+  function formatStorageDate(date) {
+    return [
+      String(date.getFullYear()),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("");
+  }
+
+  function shiftParkUseDateToNextBookingMonth(value, referenceDate) {
+    const normalized = String(value || "").trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const sourceDate = new Date(normalized + "T12:00:00");
+    if (Number.isNaN(sourceDate.getTime())) {
+      return null;
+    }
+
+    const targetBaseDate = referenceDate instanceof Date ? referenceDate : new Date();
+    const targetMonth = new Date(targetBaseDate.getFullYear(), targetBaseDate.getMonth() + 1, 1, 12, 0, 0, 0);
+    const occurrence = getWeekdayOccurrence(sourceDate);
+    const shiftedDate = findNthWeekdayInMonth(
+      targetMonth.getFullYear(),
+      targetMonth.getMonth(),
+      sourceDate.getDay(),
+      occurrence,
+    );
+    if (!shiftedDate) {
+      return null;
+    }
+
+    return formatStorageDate(shiftedDate);
+  }
+
+  function shiftParkEntriesToNextMonth(form) {
     const today = new Date();
-    const targetYear = today.getFullYear();
-    const targetMonth = today.getMonth();
     listParkEntryRows(form).forEach(function (row) {
       const dateInput = row.querySelector("[data-park-date]");
       if (!(dateInput instanceof HTMLInputElement) || !dateInput.value) {
         return;
       }
 
-      const sourceDate = new Date(dateInput.value + "T12:00:00");
-      if (Number.isNaN(sourceDate.getTime())) {
+      const shiftedValue = shiftParkUseDateToNextBookingMonth(dateInput.value, today);
+      if (!shiftedValue) {
         return;
       }
 
-      const occurrence = getWeekdayOccurrence(sourceDate);
-      const shiftedDate = findNthWeekdayInMonth(targetYear, targetMonth, sourceDate.getDay(), occurrence);
-      if (!shiftedDate) {
-        return;
-      }
-
-      dateInput.value = formatInputDate(shiftedDate);
+      dateInput.value = shiftedValue.slice(0, 4) + "-" + shiftedValue.slice(4, 6) + "-" + shiftedValue.slice(6, 8);
     });
   }
 
@@ -1498,8 +1525,8 @@
       syncParkEntries(form);
     });
 
-    elements.shiftCurrentMonthButton?.addEventListener("click", function () {
-      shiftParkEntriesToCurrentMonth(form);
+    elements.shiftNextMonthButton?.addEventListener("click", function () {
+      shiftParkEntriesToNextMonth(form);
       syncParkEntries(form);
       if (errorElement && errorElement.textContent === "競技、公園、施設、日付、時間、申込み番号を入力してください。") {
         errorElement.textContent = "";

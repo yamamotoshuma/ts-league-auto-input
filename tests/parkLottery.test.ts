@@ -8,6 +8,7 @@ import {
   parseParkEntriesText,
   parseParkAccountSelector,
   selectTokyoParkAccounts,
+  shiftParkUseDateToNextBookingMonth,
 } from "../src/domain/parkLottery";
 import type { JobInput, TokyoParkAccountSecrets } from "../src/domain/types";
 
@@ -68,5 +69,12 @@ describe("parkLottery helpers", () => {
     expect(buildParkLotteryTargetLabel(input)).toBe("野球 / 浮間公園 / 野球場 / 2026-05-01 / 09:00-11:00");
     expect(parseParkAccountSelector("主力\n控え,1003")).toEqual(["主力", "控え", "1003"]);
     expect(parseParkEntriesText(input.parkEntriesText)).toHaveLength(1);
+  });
+
+  it("shifts entries to next booking month while keeping the weekday occurrence", () => {
+    expect(shiftParkUseDateToNextBookingMonth("20260321", new Date("2026-03-05T12:00:00+09:00"))).toBe("20260418");
+    expect(shiftParkUseDateToNextBookingMonth("20260418", new Date("2026-04-05T12:00:00+09:00"))).toBe("20260516");
+    expect(shiftParkUseDateToNextBookingMonth("20261219", new Date("2026-12-05T12:00:00+09:00"))).toBe("20270116");
+    expect(shiftParkUseDateToNextBookingMonth("20260531", new Date("2026-05-05T12:00:00+09:00"))).toBe("20260628");
   });
 });

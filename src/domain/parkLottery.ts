@@ -120,6 +120,90 @@ export function buildApplyHopeValue(applyNumber: string | null | undefined): str
   return `${normalized}-1`;
 }
 
+function parseNormalizedParkDate(value: string): Date | null {
+  if (!/^\d{8}$/.test(value)) {
+    return null;
+  }
+
+  const year = Number.parseInt(value.slice(0, 4), 10);
+  const monthIndex = Number.parseInt(value.slice(4, 6), 10) - 1;
+  const day = Number.parseInt(value.slice(6, 8), 10);
+  const parsed = new Date(year, monthIndex, day, 12, 0, 0, 0);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== monthIndex ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function formatParkUseDateValue(date: Date): string {
+  return [
+    String(date.getFullYear()),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("");
+}
+
+function getWeekdayOccurrence(date: Date): number {
+  const weekday = date.getDay();
+  let occurrence = 0;
+  const cursor = new Date(date.getFullYear(), date.getMonth(), 1, 12, 0, 0, 0);
+  while (cursor <= date) {
+    if (cursor.getDay() === weekday) {
+      occurrence += 1;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return occurrence;
+}
+
+function findNthWeekdayInMonth(year: number, monthIndex: number, weekday: number, occurrence: number): Date | null {
+  const matches: Date[] = [];
+  const cursor = new Date(year, monthIndex, 1, 12, 0, 0, 0);
+  while (cursor.getMonth() === monthIndex) {
+    if (cursor.getDay() === weekday) {
+      matches.push(new Date(cursor));
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return matches[Math.min(Math.max(occurrence - 1, 0), matches.length - 1)] ?? null;
+}
+
+export function shiftParkUseDateToNextBookingMonth(
+  value: string | null | undefined,
+  referenceDate: Date = new Date(),
+): string | null {
+  const normalized = normalizeParkUseDate(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const sourceDate = parseNormalizedParkDate(normalized);
+  if (!sourceDate) {
+    return null;
+  }
+
+  const targetMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 1, 12, 0, 0, 0);
+  const shiftedDate = findNthWeekdayInMonth(
+    targetMonth.getFullYear(),
+    targetMonth.getMonth(),
+    sourceDate.getDay(),
+    getWeekdayOccurrence(sourceDate),
+  );
+  if (!shiftedDate) {
+    return null;
+  }
+
+  return formatParkUseDateValue(shiftedDate);
+}
+
 function formatParkUseDateLabel(value: string): string {
   if (!/^\d{8}$/.test(value)) {
     return value;

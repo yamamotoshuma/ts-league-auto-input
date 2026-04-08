@@ -460,10 +460,10 @@ export function renderParksPage(
                     <div class="pitcher-editor-head">
                       <div>
                         <span class="field-label">申込み順</span>
-                        <small>前回入力を初期表示。今月変換もできます</small>
+                        <small>前回入力を初期表示。第n曜日を維持して来月分へ寄せられます</small>
                       </div>
                       <div class="actions">
-                        <button id="park-entry-shift-current-month" class="secondary-button" type="button">今月に合わせる</button>
+                        <button id="park-entry-shift-next-month" class="secondary-button" type="button">来月分に合わせる</button>
                         <button id="park-entry-add" class="secondary-button" type="button">行を追加</button>
                       </div>
                     </div>
