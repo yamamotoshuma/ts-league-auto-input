@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { ArtifactStore } from "../infra/artifactStore";
 import { loadSecrets } from "../infra/secrets";
-import { createBrowser, createContext, createPage } from "../playwright/browser";
+import { createContext, createPage } from "../playwright/browser";
 import { openOrderMadeGame } from "../playwright/orderMadeClient";
 import { resolveSourceGameUrl } from "../utils/url";
 
@@ -15,10 +15,9 @@ async function main() {
   const sourceUrl = args.get("--source-url") ?? null;
   const sourceGameId = args.get("--source-game-id") ?? null;
   const secrets = await loadSecrets(projectRoot);
-  const browser = await createBrowser();
+  const context = await createContext();
 
   try {
-    const context = await createContext(browser);
     const page = await createPage(context);
     const preview = await openOrderMadeGame(
       page,
@@ -42,7 +41,7 @@ async function main() {
     );
     console.log(JSON.stringify(preview, null, 2));
   } finally {
-    await browser.close();
+    await context.close();
   }
 }
 

@@ -147,6 +147,19 @@ export function isParkLotteryRecaptchaPrompt(bodyText: string | null | undefined
   return /私はロボットではありません|recaptcha/i.test(normalizedBody);
 }
 
+export function isParkLotteryTemporaryAccessBlocked(
+  pageTitle: string | null | undefined,
+  bodyText: string | null | undefined,
+): boolean {
+  const normalizedTitle = String(pageTitle ?? "").replace(/\s+/g, " ").trim();
+  const normalizedBody = String(bodyText ?? "").replace(/\s+/g, " ").trim();
+
+  return (
+    /施設予約システムからのお知らせ/.test(normalizedTitle) ||
+    /施設予約システムからのお知らせ/.test(normalizedBody)
+  ) && /ご指定のページはアクセスできません|しばらく経ってから、アクセスしてください/.test(normalizedBody);
+}
+
 function parseNormalizedParkDate(value: string): Date | null {
   if (!/^\d{8}$/.test(value)) {
     return null;

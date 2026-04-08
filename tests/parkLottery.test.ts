@@ -5,6 +5,7 @@ import {
   getParkSportLabel,
   isParkLotteryRecaptchaPrompt,
   isParkLotterySubmissionComplete,
+  isParkLotteryTemporaryAccessBlocked,
   normalizeParkTimeValue,
   normalizeParkUseDate,
   parseParkEntriesText,
@@ -102,5 +103,15 @@ describe("parkLottery helpers", () => {
     expect(isParkLotteryRecaptchaPrompt("私はロボットではありません")).toBe(true);
     expect(isParkLotteryRecaptchaPrompt("reCAPTCHA を読み込んでいます")).toBe(true);
     expect(isParkLotteryRecaptchaPrompt("抽選申込み完了 続けて申込み")).toBe(false);
+  });
+
+  it("detects temporary access blocked pages", () => {
+    expect(
+      isParkLotteryTemporaryAccessBlocked(
+        "施設予約システムからのお知らせ",
+        "ご迷惑をおかけしております。 現在、ご指定のページはアクセスできません。 しばらく経ってから、アクセスしてください。",
+      ),
+    ).toBe(true);
+    expect(isParkLotteryTemporaryAccessBlocked("都立公園スポーツレクリエーション予約システム", "抽選申込み完了")).toBe(false);
   });
 });

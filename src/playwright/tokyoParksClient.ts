@@ -4,6 +4,7 @@ import {
   getParkSportLabel,
   isParkLotteryRecaptchaPrompt,
   isParkLotterySubmissionComplete,
+  isParkLotteryTemporaryAccessBlocked,
 } from "../domain/parkLottery";
 import type {
   ParkLotteryAccountPreview,
@@ -22,6 +23,12 @@ const PARK_NAVIGATION_TIMEOUT_MS = 45_000;
 const PARK_SETTLE_MS = 2_500;
 const PARK_LONG_SETTLE_MS = 4_000;
 const PARK_RETRY_COUNT = 3;
+const PARK_NAVIGATION_RETRY_COUNT = 4;
+const PARK_LOGIN_PAGE_RETRY_COUNT = 6;
+const PARK_LOGIN_SUBMIT_RETRY_COUNT = 5;
+const PARK_LOGIN_FORM_TIMEOUT_MS = 45_000;
+const PARK_LOGIN_STATE_TIMEOUT_MS = 35_000;
+const PARK_ACCESS_BLOCKED_BACKOFF_MS = 15_000;
 const PARK_DIALOG_TIMEOUT_MS = 5_000;
 const PARK_RECAPTCHA_WAIT_MS = 45_000;
 const PARK_RECAPTCHA_POLL_MS = 500;
@@ -46,18 +53,24 @@ async function gotoParkLogin(page: Page): Promise<void> {
 
 async function gotoWithRetry(page: Page, url: string, label: string): Promise<void> {
   let lastError: unknown = null;
-  for (let attempt = 0; attempt < PARK_RETRY_COUNT; attempt += 1) {
+  for (let attempt = 0; attempt < PARK_NAVIGATION_RETRY_COUNT; attempt += 1) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: PARK_NAVIGATION_TIMEOUT_MS });
       await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
       await page.waitForTimeout(PARK_SETTLE_MS);
+      const pageState = await inspectParkPageState(page);
+      if (pageState.blocked) {
+        throw new Error("施設予約システムからのお知らせページが表示されました");
+      }
       return;
     } catch (error) {
       lastError = error;
-      if (attempt >= PARK_RETRY_COUNT - 1) {
+      if (attempt >= PARK_NAVIGATION_RETRY_COUNT - 1) {
         break;
       }
-      await page.waitForTimeout(PARK_LONG_SETTLE_MS * (attempt + 1));
+      const pageState = await inspectParkPageState(page).catch(() => null);
+      const backoff = pageState?.blocked ? PARK_ACCESS_BLOCKED_BACKOFF_MS : PARK_LONG_SETTLE_MS * (attempt + 1);
+      await page.waitForTimeout(backoff);
     }
   }
 
@@ -66,9 +79,18 @@ async function gotoWithRetry(page: Page, url: string, label: string): Promise<vo
   );
 }
 
+async function isLoginFormVisible(page: Page, timeout = 3_000): Promise<boolean> {
+  return page
+    .locator("#userId")
+    .first()
+    .waitFor({ state: "visible", timeout })
+    .then(() => true)
+    .catch(() => false);
+}
+
 async function waitForLoginForm(page: Page): Promise<void> {
-  await page.waitForSelector("#userId", { timeout: 30_000 });
-  await page.waitForSelector("#password", { timeout: 30_000 });
+  await page.waitForSelector("#userId", { timeout: PARK_LOGIN_FORM_TIMEOUT_MS });
+  await page.waitForSelector("#password", { timeout: PARK_LOGIN_FORM_TIMEOUT_MS });
 }
 
 async function waitForAuthenticatedPage(page: Page): Promise<boolean> {
@@ -85,6 +107,43 @@ async function waitForAuthenticatedPage(page: Page): Promise<boolean> {
     .catch(() => false);
 
   return loggedIn && !/rsvWTransUserLoginAction\.do/.test(page.url());
+}
+
+async function inspectParkPageState(
+  page: Page,
+): Promise<{ blocked: boolean; hasLoginForm: boolean; title: string | null; bodyText: string }> {
+  const [title, bodyText, hasLoginForm] = await Promise.all([
+    page.title().catch(() => null),
+    page.locator("body").innerText().catch(() => ""),
+    page
+      .locator("#userId")
+      .first()
+      .isVisible({ timeout: 1_000 })
+      .catch(() => false),
+  ]);
+
+  return {
+    blocked: isParkLotteryTemporaryAccessBlocked(title, bodyText),
+    hasLoginForm,
+    title,
+    bodyText,
+  };
+}
+
+async function waitForLoginAttemptToSettle(page: Page): Promise<void> {
+  await page
+    .waitForFunction(
+      () => {
+        const bodyText = (document.body?.innerText || "").replace(/\s+/g, " ");
+        return (
+          !document.querySelector("#userId") ||
+          /利用者カード表示|マイメニュー|抽選申込み|空き状況検索|ログイン画面|利用者番号|パスワード|施設予約システムからのお知らせ/.test(bodyText)
+        );
+      },
+      undefined,
+      { timeout: PARK_LOGIN_STATE_TIMEOUT_MS },
+    )
+    .catch(() => undefined);
 }
 
 async function moveToLoginPage(page: Page): Promise<void> {
@@ -121,6 +180,78 @@ async function moveToLoginPage(page: Page): Promise<void> {
   }
 
   await page.waitForURL(/rsvWTransUserLoginAction\.do/, { timeout: 25_000 });
+}
+
+async function recoverParkLoginPage(page: Page, baseUrl: string): Promise<void> {
+  await page.context().clearCookies().catch(() => undefined);
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < PARK_LOGIN_PAGE_RETRY_COUNT; attempt += 1) {
+    try {
+      if (await waitForAuthenticatedPage(page)) {
+        return;
+      }
+
+      const currentState = await inspectParkPageState(page);
+      if (currentState.blocked) {
+        await page.waitForTimeout(PARK_ACCESS_BLOCKED_BACKOFF_MS);
+      }
+
+      await gotoParkLogin(page);
+      if (await isLoginFormVisible(page, 10_000)) {
+        return;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    try {
+      await gotoParkHome(page, baseUrl);
+      if (await isLoginFormVisible(page, 4_000)) {
+        return;
+      }
+
+      await moveToLoginPage(page);
+      if (await isLoginFormVisible(page, 10_000)) {
+        return;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    await page.waitForTimeout(PARK_LONG_SETTLE_MS * (attempt + 1));
+  }
+
+  throw new Error(
+    `ログイン画面を再表示できませんでした: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
+}
+
+async function submitParkLogin(page: Page, account: TokyoParkAccountSecrets): Promise<boolean> {
+  await waitForLoginForm(page);
+  await page.fill("#userId", "");
+  await page.fill("#password", "");
+  await page.fill("#userId", account.userId);
+  await page.fill("#password", account.password);
+
+  const dialogPromise = page
+    .waitForEvent("dialog", { timeout: PARK_DIALOG_TIMEOUT_MS })
+    .then((dialog) => dialog.accept())
+    .catch(() => undefined);
+
+  await page.click("#btn-go");
+  await dialogPromise;
+  await page.waitForLoadState("domcontentloaded", { timeout: PARK_NAVIGATION_TIMEOUT_MS }).catch(() => undefined);
+  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+  await waitForLoginAttemptToSettle(page);
+  await page.waitForTimeout(PARK_SETTLE_MS);
+
+  const pageState = await inspectParkPageState(page);
+  if (pageState.blocked) {
+    throw new Error("施設予約システムからのお知らせページが表示されました");
+  }
+
+  return waitForAuthenticatedPage(page);
 }
 
 async function selectOptionByLabel(page: Page, selector: string, expectedLabel: string, fieldLabel: string): Promise<string> {
@@ -574,57 +705,57 @@ export async function loginTokyoParks(
   secrets: TokyoParksSecrets,
   account: TokyoParkAccountSecrets,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    await gotoParkHome(page, secrets.baseUrl);
-    const hasLoginForm = await page
-      .locator("#userId")
-      .first()
-      .waitFor({ state: "visible", timeout: 3_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (hasLoginForm) {
-      break;
-    }
-
-    try {
-      await moveToLoginPage(page);
-    } catch {
-      await gotoParkLogin(page).catch(() => undefined);
-    }
-
-    const loginReady = await page
-      .locator("#userId")
-      .first()
-      .waitFor({ state: "visible", timeout: 8_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (loginReady) {
-      break;
-    }
-
-    await page.waitForTimeout(1_000 * (attempt + 1));
+  if (await waitForAuthenticatedPage(page)) {
+    return;
   }
 
-  for (let attempt = 0; attempt < PARK_RETRY_COUNT; attempt += 1) {
-    await waitForLoginForm(page);
-    await page.fill("#userId", account.userId);
-    await page.fill("#password", account.password);
-    await Promise.all([
-      page.waitForURL(/rsvWUserAttestationLoginAction\.do/, { timeout: 30_000 }).catch(() => undefined),
-      page.click("#btn-go"),
-    ]);
-    await page.waitForLoadState("domcontentloaded", { timeout: PARK_NAVIGATION_TIMEOUT_MS }).catch(() => undefined);
-    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
-    await page.waitForTimeout(PARK_SETTLE_MS);
+  await recoverParkLoginPage(page, secrets.baseUrl);
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < PARK_LOGIN_SUBMIT_RETRY_COUNT; attempt += 1) {
+    try {
+      if (!(await isLoginFormVisible(page, 4_000))) {
+        await recoverParkLoginPage(page, secrets.baseUrl);
+      }
+
+      if (await submitParkLogin(page, account)) {
+        return;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
 
     if (await waitForAuthenticatedPage(page)) {
       return;
     }
 
-    await page.waitForTimeout(PARK_LONG_SETTLE_MS * (attempt + 1));
+    if (attempt >= PARK_LOGIN_SUBMIT_RETRY_COUNT - 1) {
+      break;
+    }
+
+    const pageState = await inspectParkPageState(page).catch(() => null);
+    const backoff = pageState?.blocked ? PARK_ACCESS_BLOCKED_BACKOFF_MS : PARK_LONG_SETTLE_MS * (attempt + 1);
+    await page.waitForTimeout(backoff);
+    await recoverParkLoginPage(page, secrets.baseUrl).catch((error) => {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    });
   }
 
-  throw new Error(`都立公園へのログインに失敗しました: ${account.userId}`);
+  const detail = lastError ? ` (${lastError.message})` : "";
+  throw new Error(`都立公園へのログインに失敗しました: ${account.userId}${detail}`);
+}
+
+export async function isTokyoParksAuthenticated(page: Page): Promise<boolean> {
+  const currentState = await inspectParkPageState(page).catch(() => null);
+  if (currentState?.blocked) {
+    return false;
+  }
+
+  if (currentState && !currentState.hasLoginForm && /利用者カード表示|マイメニュー|抽選申込み|空き状況検索/.test(currentState.bodyText)) {
+    return true;
+  }
+
+  return waitForAuthenticatedPage(page);
 }
 
 export async function logoutTokyoParks(page: Page, baseUrl: string): Promise<void> {
@@ -653,7 +784,12 @@ export async function prepareTokyoParkLotteryEntry(page: Page, entry: ParkLotter
 
   for (let attempt = 0; attempt < PARK_RETRY_COUNT; attempt += 1) {
     try {
-      if ((await page.locator("#userId").count()) > 0 || /rsvWTransUserLoginAction\.do/.test(page.url())) {
+      const pageState = await inspectParkPageState(page);
+      if (pageState.blocked) {
+        throw new Error("施設予約システムからのお知らせページが表示されました");
+      }
+
+      if (pageState.hasLoginForm || /rsvWTransUserLoginAction\.do/.test(page.url())) {
         throw new Error("ログイン状態を維持できませんでした");
       }
 

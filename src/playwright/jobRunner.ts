@@ -8,12 +8,11 @@ import type {
   ParkLotteryAccountPreview,
   ParkLotteryEntryPreview,
 } from "../domain/types";
-import type { Browser } from "playwright";
 import { buildMappingPreview, isCommitReady, verifyAppliedMapping } from "../domain/mapping";
 import { buildParkLotteryTargetLabel, isParkLotteryCommitReady, parseParkEntriesText, selectTokyoParkAccounts } from "../domain/parkLottery";
 import { buildPitcherMappingPreview, isPitcherCommitReady, verifyAppliedPitcherMapping } from "../domain/pitcherMapping";
 import { parsePitcherAllocationText } from "../domain/pitcherAllocation";
-import { createBrowser, createContext, createPage } from "./browser";
+import { createContext, createPage } from "./browser";
 import { openOrderMadeGame } from "./orderMadeClient";
 import { openTsLeaguePublicGame } from "./tsLeaguePublicClient";
 import {
@@ -24,6 +23,7 @@ import {
   verifySubmitResult,
 } from "./tsLeagueClient";
 import {
+  isTokyoParksAuthenticated,
   loginTokyoParks,
   logoutTokyoParks,
   prepareTokyoParkLotteryEntry,
@@ -69,11 +69,10 @@ export class PlaywrightJobRunner {
   ) {}
 
   async run(jobId: string, input: JobInput, secrets: AppSecrets, context: AutomationContext): Promise<void> {
-    let browser: Browser | null = null;
+    let browserContext: BrowserContext | null = null;
 
     try {
-      browser = await createBrowser();
-      const browserContext = await createContext(browser);
+      browserContext = await createContext();
       const page = await createPage(browserContext);
       if (input.workflow === "park-lottery") {
         await this.runParkLotteryWorkflow(jobId, input, secrets, context, page);
@@ -87,8 +86,8 @@ export class PlaywrightJobRunner {
 
       await this.runBatterWorkflow(jobId, input, secrets, context, page);
     } catch (error) {
-      if (browser) {
-        const pages = browser.contexts().flatMap((context) => context.pages());
+      if (browserContext) {
+        const pages = browserContext.pages();
         const activePage = pages[pages.length - 1];
         if (activePage) {
           await captureScreenshot(activePage, this.artifactStore, jobId, "failure", context.attachArtifact).catch(
@@ -108,8 +107,8 @@ export class PlaywrightJobRunner {
 
       throw error;
     } finally {
-      if (browser) {
-        await browser.close();
+      if (browserContext) {
+        await browserContext.close().catch(() => undefined);
       }
     }
   }
@@ -426,6 +425,22 @@ export class PlaywrightJobRunner {
             for (let attempt = 0; attempt < 3; attempt += 1) {
               try {
                 if (attempt > 0) {
+                  const authenticated = await isTokyoParksAuthenticated(page);
+                  if (!authenticated) {
+                    await context.log("warn", "park.login", "セッション切れのため再ログインします", {
+                      account: account.label,
+                      entryIndex: index + 1,
+                      attempt: attempt + 1,
+                    });
+                    await loginTokyoParks(page, secrets.tokyoParks, account);
+                  } else {
+                    await context.log("info", "park.entry.prepare", "ログイン済みのため抽選申込み内容の確認を再試行します", {
+                      account: account.label,
+                      entryIndex: index + 1,
+                      attempt: attempt + 1,
+                    });
+                  }
+
                   await context.log("warn", "park.entry.prepare", "抽選申込み内容の確認を再試行します", {
                     account: account.label,
                     entryIndex: index + 1,

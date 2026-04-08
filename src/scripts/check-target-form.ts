@@ -1,5 +1,5 @@
 import { loadSecrets } from "../infra/secrets";
-import { createBrowser, createContext, createPage } from "../playwright/browser";
+import { createContext, createPage } from "../playwright/browser";
 import { inspectTargetForm, openTargetGame } from "../playwright/tsLeagueClient";
 
 async function main() {
@@ -14,10 +14,9 @@ async function main() {
   }
 
   const secrets = await loadSecrets(process.cwd());
-  const browser = await createBrowser();
+  const context = await createContext();
 
   try {
-    const context = await createContext(browser);
     const page = await createPage(context);
     await openTargetGame(page, secrets.tsLeague, {
       targetGameKey,
@@ -28,9 +27,8 @@ async function main() {
     const preview = await inspectTargetForm(page);
     console.log(JSON.stringify(preview, null, 2));
   } finally {
-    await browser.close();
+    await context.close();
   }
 }
 
 void main();
-

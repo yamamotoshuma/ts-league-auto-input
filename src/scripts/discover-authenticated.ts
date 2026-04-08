@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { loadSecrets } from "../infra/secrets";
-import { createBrowser, createContext, createPage } from "../playwright/browser";
+import { createContext, createPage } from "../playwright/browser";
 import { openOrderMadeGame } from "../playwright/orderMadeClient";
 import { extractPageTables } from "../playwright/pageExtraction";
 import { resolveSourceGameUrl } from "../utils/url";
@@ -23,7 +23,7 @@ async function main() {
   const args = argMap(process.argv);
   const projectRoot = process.cwd();
   const secrets = await loadSecrets(projectRoot);
-  const browser = await createBrowser();
+  const context = await createContext();
   const artifactDir = join(projectRoot, "artifacts", "live-discovery");
   await ensureDir(artifactDir);
 
@@ -32,7 +32,6 @@ async function main() {
   const gameFormIndex = Number.parseInt(args.get("--target-form-index") ?? "0", 10);
 
   try {
-    const context = await createContext(browser);
     const page = await createPage(context);
 
     const resolvedSourceUrl = resolveSourceGameUrl(
@@ -204,7 +203,7 @@ async function main() {
 
     console.log(JSON.stringify(summary, null, 2));
   } finally {
-    await browser.close();
+    await context.close();
   }
 }
 

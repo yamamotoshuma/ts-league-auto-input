@@ -1,4 +1,4 @@
-import { type Browser, type BrowserContext, type Page } from "playwright";
+import { type BrowserContext, type Page } from "playwright";
 import { chromium } from "playwright-extra"; // playwrightからではなくこちらからインポート
 import stealthPlugin from "puppeteer-extra-plugin-stealth";
 import path from "path";
@@ -9,17 +9,7 @@ import { PLAYWRIGHT_NAVIGATION_TIMEOUT_MS, PLAYWRIGHT_TIMEOUT_MS } from "../util
 chromium.use(stealthPlugin());
 loadRuntimeEnv();
 
-export async function createBrowser(): Promise<Browser> {
-  return chromium.launch({
-    headless: process.env.PLAYWRIGHT_HEADLESS !== "false",
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-    ]
-  });
-}
-
-export async function createContext(browser: Browser): Promise<BrowserContext> {
+export async function createContext(): Promise<BrowserContext> {
   // プロファイル（Cookieやセッション）の保存先を指定
   // これにより、一度手動で解いたreCAPTCHAの「信頼度」が次回の実行に引き継がれます
   const userDataDir = path.join(process.cwd(), ".user_data");
