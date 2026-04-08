@@ -2,10 +2,12 @@ import { type Browser, type BrowserContext, type Page } from "playwright";
 import { chromium } from "playwright-extra"; // playwrightからではなくこちらからインポート
 import stealthPlugin from "puppeteer-extra-plugin-stealth";
 import path from "path";
+import { loadRuntimeEnv } from "../infra/runtimeEnv";
 import { PLAYWRIGHT_NAVIGATION_TIMEOUT_MS, PLAYWRIGHT_TIMEOUT_MS } from "../utils/constants";
 
 // Stealthプラグインを登録
 chromium.use(stealthPlugin());
+loadRuntimeEnv();
 
 export async function createBrowser(): Promise<Browser> {
   return chromium.launch({
@@ -54,4 +56,3 @@ export async function createPage(context: BrowserContext): Promise<Page> {
   page.setDefaultNavigationTimeout(PLAYWRIGHT_NAVIGATION_TIMEOUT_MS);
   return page;
 }
-

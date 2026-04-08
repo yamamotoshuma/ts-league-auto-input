@@ -9,7 +9,10 @@ import { createApiRouter } from "./api/routes";
 import { createUiRouter } from "./app/ui";
 import { createOptionalAppAuthMiddleware } from "./app/appAuth";
 import { loadWebAppAuthSecrets } from "./infra/secrets";
+import { loadRuntimeEnv } from "./infra/runtimeEnv";
 import { DEFAULT_HOST, DEFAULT_PORT } from "./utils/constants";
+
+loadRuntimeEnv();
 
 async function main() {
   const projectRoot = process.cwd();
