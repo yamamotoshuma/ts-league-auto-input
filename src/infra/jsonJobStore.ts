@@ -42,6 +42,11 @@ export class JsonJobStore {
     return jobs.find((job) => job.id === jobId) ?? null;
   }
 
+  async listActive(): Promise<JobRecord[]> {
+    const jobs = await this.readAll();
+    return jobs.filter((job) => isActiveStatus(job.status));
+  }
+
   async create(job: JobRecord): Promise<void> {
     await this.withWriteLock(async () => {
       const jobs = await this.readAll();

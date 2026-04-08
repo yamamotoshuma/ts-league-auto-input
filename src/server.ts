@@ -22,6 +22,7 @@ async function main() {
   await jobStore.initialize();
   await parkSettingsStore.initialize();
   await artifactStore.initialize();
+  await queue.recoverInterruptedJobs();
   const webAppAuthSecrets = await loadWebAppAuthSecrets(projectRoot);
 
   const app = express();

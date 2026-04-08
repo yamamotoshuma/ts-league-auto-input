@@ -111,9 +111,34 @@ export class JobQueue {
     };
 
     await this.store.create(job);
-    this.pendingIds.push(job.id);
+    this.schedule(job.id);
     void this.processLoop();
     return job;
+  }
+
+  async recoverInterruptedJobs(): Promise<number> {
+    const activeJobs = await this.store.listActive();
+    for (const job of activeJobs) {
+      await this.store.update(job.id, (current) => ({
+        ...current,
+        status: "failed",
+        finishedAt: now(),
+        errorSummary:
+          current.errorSummary ??
+          ({
+            message: "前回のアプリ再起動で中断されました。再実行してください。",
+            step: current.lastStep,
+            url: current.preview?.target?.pageUrl ?? current.preview?.source?.sourceUrl ?? null,
+            candidateCauses: ["前回のジョブ実行中にアプリが再起動しました"],
+          } satisfies JobErrorSummary),
+        logs: [
+          ...current.logs,
+          createLogEntry("warn", current.lastStep ?? "job.failed", "前回のアプリ再起動でジョブを中断しました"),
+        ],
+      }));
+    }
+
+    return activeJobs.length;
   }
 
   async retry(jobId: string): Promise<JobRecord> {
@@ -146,6 +171,12 @@ export class JobQueue {
 
   async get(jobId: string): Promise<JobRecord | null> {
     return this.store.get(jobId);
+  }
+
+  private schedule(jobId: string): void {
+    if (!this.pendingIds.includes(jobId)) {
+      this.pendingIds.push(jobId);
+    }
   }
 
   private async appendLog(
@@ -212,17 +243,29 @@ export class JobQueue {
     }
 
     this.processing = true;
+    try {
+      while (this.pendingIds.length > 0) {
+        const jobId = this.pendingIds.shift();
+        if (!jobId) {
+          continue;
+        }
 
-    while (this.pendingIds.length > 0) {
-      const jobId = this.pendingIds.shift();
-      if (!jobId) {
-        continue;
+        try {
+          await this.processOne(jobId);
+        } catch (error) {
+          console.error(`[job-queue] unexpected error while processing ${jobId}`, error);
+
+          const currentJob = await this.store.get(jobId).catch(() => null);
+          try {
+            await this.failJob(jobId, error, currentJob, null);
+          } catch (failError) {
+            console.error(`[job-queue] failed to mark ${jobId} as failed`, failError);
+          }
+        }
       }
-
-      await this.processOne(jobId);
+    } finally {
+      this.processing = false;
     }
-
-    this.processing = false;
   }
 
   private async processOne(jobId: string): Promise<void> {
