@@ -142,6 +142,11 @@ export function isParkLotterySubmissionComplete(
   );
 }
 
+export function isParkLotteryRecaptchaPrompt(bodyText: string | null | undefined): boolean {
+  const normalizedBody = String(bodyText ?? "").replace(/\s+/g, " ").trim();
+  return /私はロボットではありません|recaptcha/i.test(normalizedBody);
+}
+
 function parseNormalizedParkDate(value: string): Date | null {
   if (!/^\d{8}$/.test(value)) {
     return null;

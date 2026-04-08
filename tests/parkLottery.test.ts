@@ -3,6 +3,7 @@ import {
   buildApplyHopeValue,
   buildParkLotteryTargetLabel,
   getParkSportLabel,
+  isParkLotteryRecaptchaPrompt,
   isParkLotterySubmissionComplete,
   normalizeParkTimeValue,
   normalizeParkUseDate,
@@ -95,5 +96,11 @@ describe("parkLottery helpers", () => {
         "抽選申込み完了 続けて申込み",
       ),
     ).toBe(true);
+  });
+
+  it("detects recaptcha prompts on the returned confirmation page", () => {
+    expect(isParkLotteryRecaptchaPrompt("私はロボットではありません")).toBe(true);
+    expect(isParkLotteryRecaptchaPrompt("reCAPTCHA を読み込んでいます")).toBe(true);
+    expect(isParkLotteryRecaptchaPrompt("抽選申込み完了 続けて申込み")).toBe(false);
   });
 });

@@ -1,5 +1,10 @@
 import type { Page } from "playwright";
-import { buildApplyHopeValue, getParkSportLabel, isParkLotterySubmissionComplete } from "../domain/parkLottery";
+import {
+  buildApplyHopeValue,
+  getParkSportLabel,
+  isParkLotteryRecaptchaPrompt,
+  isParkLotterySubmissionComplete,
+} from "../domain/parkLottery";
 import type {
   ParkLotteryAccountPreview,
   ParkLotteryApplyOption,
@@ -13,9 +18,16 @@ const PARK_HOME_URL = "https://kouen.sports.metro.tokyo.lg.jp/web/index.jsp";
 const PARK_LOGIN_URL = "https://kouen.sports.metro.tokyo.lg.jp/web/rsvWTransUserLoginAction.do";
 const PARK_LOTTERY_LIST_URL = "https://kouen.sports.metro.tokyo.lg.jp/web/lotWOpeLotSearchAction.do";
 const PARK_OPTION_WAIT_MS = 30_000;
+const PARK_NAVIGATION_TIMEOUT_MS = 45_000;
 const PARK_SETTLE_MS = 2_500;
 const PARK_LONG_SETTLE_MS = 4_000;
 const PARK_RETRY_COUNT = 3;
+const PARK_DIALOG_TIMEOUT_MS = 5_000;
+const PARK_RECAPTCHA_WAIT_MS = 45_000;
+const PARK_RECAPTCHA_POLL_MS = 500;
+const PARK_SELECTION_TIMEOUT_MS = 10_000;
+const PARK_RECAPTCHA_ANCHOR_IFRAME_SELECTOR = 'iframe[src*="/recaptcha/api2/anchor"]';
+const PARK_RECAPTCHA_BFRAME_SELECTOR = 'iframe[src*="/recaptcha/api2/bframe"]';
 
 function normalizeOptionLabel(value: string): string {
   return value
@@ -25,11 +37,33 @@ function normalizeOptionLabel(value: string): string {
 }
 
 async function gotoParkHome(page: Page, baseUrl: string): Promise<void> {
-  await page.goto(baseUrl || PARK_HOME_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await gotoWithRetry(page, baseUrl || PARK_HOME_URL, "トップ画面");
 }
 
 async function gotoParkLogin(page: Page): Promise<void> {
-  await page.goto(PARK_LOGIN_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await gotoWithRetry(page, PARK_LOGIN_URL, "ログイン画面");
+}
+
+async function gotoWithRetry(page: Page, url: string, label: string): Promise<void> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < PARK_RETRY_COUNT; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: PARK_NAVIGATION_TIMEOUT_MS });
+      await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+      await page.waitForTimeout(PARK_SETTLE_MS);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= PARK_RETRY_COUNT - 1) {
+        break;
+      }
+      await page.waitForTimeout(PARK_LONG_SETTLE_MS * (attempt + 1));
+    }
+  }
+
+  throw new Error(
+    `${label}の読込に失敗しました: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
 }
 
 async function waitForLoginForm(page: Page): Promise<void> {
@@ -45,7 +79,7 @@ async function waitForAuthenticatedPage(page: Page): Promise<boolean> {
         return !document.querySelector("#userId") && /利用者カード表示|マイメニュー|抽選申込み|空き状況検索/.test(bodyText);
       },
       undefined,
-      { timeout: 20_000 },
+      { timeout: 30_000 },
     )
     .then(() => true)
     .catch(() => false);
@@ -60,7 +94,7 @@ async function moveToLoginPage(page: Page): Promise<void> {
 
   if ((await loginButton.count()) > 0) {
     await Promise.all([
-      page.waitForURL(/rsvWTransUserLoginAction\.do/, { timeout: 15_000 }),
+      page.waitForURL(/rsvWTransUserLoginAction\.do/, { timeout: 25_000 }),
       loginButton.click(),
     ]);
     return;
@@ -86,7 +120,7 @@ async function moveToLoginPage(page: Page): Promise<void> {
     throw new Error("ログイン画面への導線が見つかりません");
   }
 
-  await page.waitForURL(/rsvWTransUserLoginAction\.do/, { timeout: 15_000 });
+  await page.waitForURL(/rsvWTransUserLoginAction\.do/, { timeout: 25_000 });
 }
 
 async function selectOptionByLabel(page: Page, selector: string, expectedLabel: string, fieldLabel: string): Promise<string> {
@@ -163,11 +197,11 @@ async function openParkLotteryList(page: Page): Promise<void> {
       .catch(() => false);
 
     if (!movedByAction) {
-      await page.goto(PARK_LOTTERY_LIST_URL, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await gotoWithRetry(page, PARK_LOTTERY_LIST_URL, "抽選分類一覧");
     }
 
     const reached = await page
-      .waitForURL(/lotWOpeLotSearchAction\.do/, { timeout: 30_000 })
+      .waitForURL(/lotWOpeLotSearchAction\.do/, { timeout: PARK_NAVIGATION_TIMEOUT_MS })
       .then(() => true)
       .catch(() => false);
     if (reached) {
@@ -236,7 +270,7 @@ async function selectLotteryCategory(page: Page, classCode: string, selectedSpor
     throw new Error(`競技 "${selectedSportLabel ?? classCode}" の申込み導線が見つかりません`);
   }
 
-  await page.waitForURL(/lotWOpeTransLotInstSrchVacantAction\.do/, { timeout: 30_000 });
+  await page.waitForURL(/lotWOpeTransLotInstSrchVacantAction\.do/, { timeout: PARK_NAVIGATION_TIMEOUT_MS });
   return selectedCategory;
 }
 
@@ -246,7 +280,7 @@ async function waitForTimeGrid(page: Page): Promise<void> {
       .waitForFunction(
         () => document.querySelectorAll('#usedate-table thead input[name="selectUseYMD"]').length > 0,
         undefined,
-        { timeout: 12_000 },
+        { timeout: 20_000 },
       )
       .then(() => true)
       .catch(() => false);
@@ -440,6 +474,101 @@ function findRequestedApplyOption(
   return applyOptions.find((option) => option.value === requestedValue) ?? null;
 }
 
+async function readApplySelection(page: Page): Promise<{ value: string; label: string | null }> {
+  return page.evaluate(() => {
+    const select = document.querySelector<HTMLSelectElement>("#apply");
+    const selectedOption = select?.selectedOptions?.[0] ?? null;
+    return {
+      value: select?.value ?? "",
+      label: selectedOption ? (selectedOption.textContent || "").trim() : null,
+    };
+  });
+}
+
+async function ensureApplyOptionSelected(page: Page, expectedValue: string): Promise<{ value: string; label: string | null }> {
+  await page.waitForSelector("#apply", { timeout: PARK_SELECTION_TIMEOUT_MS });
+  await page.selectOption("#apply", expectedValue);
+  await page.waitForFunction(
+    (value) => {
+      const select = document.querySelector<HTMLSelectElement>("#apply");
+      return select !== null && select.value === value;
+    },
+    expectedValue,
+    { timeout: PARK_SELECTION_TIMEOUT_MS },
+  );
+  return readApplySelection(page);
+}
+
+async function clickParkSubmitButton(page: Page): Promise<void> {
+  const dialogPromise = page
+    .waitForEvent("dialog", { timeout: PARK_DIALOG_TIMEOUT_MS })
+    .then((dialog) => dialog.accept())
+    .catch(() => undefined);
+
+  await page.click("#btn-go");
+  await dialogPromise;
+}
+
+async function hasRecaptchaPrompt(page: Page): Promise<boolean> {
+  const frameVisible = await page
+    .locator(PARK_RECAPTCHA_ANCHOR_IFRAME_SELECTOR)
+    .first()
+    .isVisible({ timeout: PARK_RECAPTCHA_WAIT_MS })
+    .catch(() => false);
+  if (frameVisible) {
+    return true;
+  }
+
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  return isParkLotteryRecaptchaPrompt(bodyText);
+}
+
+async function trySolveRecaptchaCheckbox(page: Page): Promise<"solved" | "challenge" | "missing"> {
+  const checkbox = page.frameLocator(PARK_RECAPTCHA_ANCHOR_IFRAME_SELECTOR).locator("#recaptcha-anchor");
+  const attempts = Math.ceil(PARK_RECAPTCHA_WAIT_MS / PARK_RECAPTCHA_POLL_MS);
+
+  let visible = false;
+  for (let index = 0; index < attempts; index += 1) {
+    visible = await checkbox.isVisible().catch(() => false);
+    if (visible) {
+      break;
+    }
+
+    const promptGone = !(await hasRecaptchaPrompt(page));
+    if (promptGone) {
+      return "missing";
+    }
+
+    await page.waitForTimeout(PARK_RECAPTCHA_POLL_MS);
+  }
+
+  if (!visible) {
+    return "missing";
+  }
+
+  await checkbox.click({ force: true });
+
+  for (let index = 0; index < attempts; index += 1) {
+    const checked = await checkbox.getAttribute("aria-checked").catch(() => null);
+    if (checked === "true") {
+      return "solved";
+    }
+
+    const challengeVisible = await page
+      .frameLocator(PARK_RECAPTCHA_BFRAME_SELECTOR)
+      .locator('#rc-imageselect, .rc-imageselect, #recaptcha-verify-button, textarea[aria-label*="認証"], textarea[aria-label*="Challenge"]')
+      .isVisible()
+      .catch(() => false);
+    if (challengeVisible) {
+      return "challenge";
+    }
+
+    await page.waitForTimeout(PARK_RECAPTCHA_POLL_MS);
+  }
+
+  return "challenge";
+}
+
 export async function loginTokyoParks(
   page: Page,
   secrets: TokyoParksSecrets,
@@ -484,7 +613,8 @@ export async function loginTokyoParks(
       page.waitForURL(/rsvWUserAttestationLoginAction\.do/, { timeout: 30_000 }).catch(() => undefined),
       page.click("#btn-go"),
     ]);
-    await page.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => undefined);
+    await page.waitForLoadState("domcontentloaded", { timeout: PARK_NAVIGATION_TIMEOUT_MS }).catch(() => undefined);
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
     await page.waitForTimeout(PARK_SETTLE_MS);
 
     if (await waitForAuthenticatedPage(page)) {
@@ -528,7 +658,8 @@ export async function prepareTokyoParkLotteryEntry(page: Page, entry: ParkLotter
       }
 
       await openParkLotteryList(page);
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("domcontentloaded", { timeout: PARK_NAVIGATION_TIMEOUT_MS }).catch(() => undefined);
+      await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
       await page.waitForTimeout(PARK_SETTLE_MS);
       const selectedSportLabel = entry.sportLabel ?? getParkSportLabel(entry.sportClassCode);
       const selectedCategory = await selectLotteryCategory(page, entry.sportClassCode, selectedSportLabel);
@@ -547,7 +678,7 @@ export async function prepareTokyoParkLotteryEntry(page: Page, entry: ParkLotter
       const slotSelection = await selectTimeRange(page, entry);
 
       await Promise.all([
-        page.waitForURL(/lotWInstTempLotApplyAction\.do/, { timeout: 30_000 }),
+        page.waitForURL(/lotWInstTempLotApplyAction\.do/, { timeout: PARK_NAVIGATION_TIMEOUT_MS }),
         page.click("#btn-go"),
       ]);
       await page.waitForTimeout(PARK_SETTLE_MS);
@@ -604,16 +735,67 @@ export async function submitTokyoParkLotteryEntry(
     };
   }
 
-  await page.selectOption("#apply", entryPreview.requestedApplyOptionValue);
+  const warnings = [...entryPreview.warnings];
 
-  const dialogPromise = page
-    .waitForEvent("dialog", { timeout: 5_000 })
-    .then((dialog) => dialog.accept())
-    .catch(() => undefined);
+  const selectedBeforeSubmit = await ensureApplyOptionSelected(page, entryPreview.requestedApplyOptionValue).catch(async () => {
+    const actual = await readApplySelection(page).catch(() => ({ value: "", label: null }));
+    throw new Error(
+      `申込み番号の選択に失敗しました (expected: ${entryPreview.requestedApplyOptionValue}, actual: ${actual.value || "未取得"})`,
+    );
+  });
 
-  await page.click("#btn-go");
-  await dialogPromise;
-  await page.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => undefined);
+  if (selectedBeforeSubmit.value !== entryPreview.requestedApplyOptionValue) {
+    return {
+      ...entryPreview,
+      status: "failed",
+      warnings: [
+        ...warnings,
+        `申込み番号の選択に失敗しました (expected: ${entryPreview.requestedApplyOptionValue}, actual: ${selectedBeforeSubmit.value || "未取得"})`,
+      ],
+    };
+  }
+
+  await randomWait(page, 1500, 3000); 
+  await moveMouseHumanLike(page, "#btn-go");
+
+  await clickParkSubmitButton(page);
+  await page.waitForLoadState("domcontentloaded", { timeout: PARK_NAVIGATION_TIMEOUT_MS }).catch(() => undefined);
+  await page.waitForTimeout(PARK_SETTLE_MS);
+
+  if (await hasRecaptchaPrompt(page)) {
+    const recaptchaResult = await trySolveRecaptchaCheckbox(page);
+    if (recaptchaResult === "solved") {
+      await randomWait(page, 800, 1500);
+      const reapplied = await ensureApplyOptionSelected(page, entryPreview.requestedApplyOptionValue).catch(async () => {
+        const actual = await readApplySelection(page).catch(() => ({ value: "", label: null }));
+        throw new Error(
+          `reCAPTCHA 後の申込み番号再選択に失敗しました (expected: ${entryPreview.requestedApplyOptionValue}, actual: ${actual.value || "未取得"})`,
+        );
+      });
+
+      if (reapplied.value !== entryPreview.requestedApplyOptionValue) {
+        return {
+          ...entryPreview,
+          status: "failed",
+          warnings: [
+            ...warnings,
+            `reCAPTCHA 後の申込み番号再選択に失敗しました (expected: ${entryPreview.requestedApplyOptionValue}, actual: ${reapplied.value || "未取得"})`,
+          ],
+        };
+      }
+
+      await moveMouseHumanLike(page, "#btn-go");
+      await clickParkSubmitButton(page);
+      await page.waitForLoadState("domcontentloaded", { timeout: PARK_NAVIGATION_TIMEOUT_MS }).catch(() => undefined);
+      await page.waitForTimeout(PARK_SETTLE_MS);
+    } else if (recaptchaResult === "challenge") {
+      warnings.push("reCAPTCHA が画像認証に進んだため自動送信できませんでした");
+    } else {
+      warnings.push("reCAPTCHA のチェックボックスを検出できませんでした");
+    }
+  }
+
+  await page.waitForLoadState("networkidle", { timeout: PARK_NAVIGATION_TIMEOUT_MS }).catch(() => undefined);
   await page.waitForTimeout(PARK_LONG_SETTLE_MS);
 
   const title = await page.title().catch(() => null);
@@ -626,8 +808,8 @@ export async function submitTokyoParkLotteryEntry(
     pageUrl: page.url(),
     pageTitle: title,
     warnings: looksSuccessful
-      ? entryPreview.warnings
-      : [...entryPreview.warnings, "抽選申込み完了画面を確認できませんでした"],
+      ? warnings
+      : [...warnings, "抽選申込み完了画面を確認できませんでした"],
   };
 }
 
@@ -645,4 +827,30 @@ export function summarizeParkAccount(
     entryPreviews,
     warnings: entryPreviews.flatMap((entry) => entry.warnings),
   };
+}
+
+/**
+ * 指定した要素の周辺でマウスを適当に動かす
+ */
+async function moveMouseHumanLike(page: Page, selector: string) {
+  const element = page.locator(selector);
+  const box = await element.boundingBox();
+
+  if (box) {
+    // ボタンの周辺のランダムな座標へ移動
+    const x = box.x + box.width * Math.random();
+    const y = box.y + box.height * Math.random();
+    
+    // 中間地点を経由して「スッ」と動かす（Playwrightのデフォルトは直線なので、複数回に分けるのもアリ）
+    await page.mouse.move(x - 50, y - 50, { steps: 5 }); // 少し手前
+    await page.mouse.move(x, y, { steps: 10 });        // ターゲットへ
+  }
+}
+
+/**
+ * 指定した範囲内でランダムに待機する
+ */
+async function randomWait(page: Page, min = 500, max = 1500) {
+  const waitTime = Math.floor(Math.random() * (max - min + 1)) + min;
+  await page.waitForTimeout(waitTime);
 }
