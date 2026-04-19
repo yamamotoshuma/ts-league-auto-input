@@ -106,13 +106,15 @@ User=yamamoto
 Group=yamamoto
 WorkingDirectory=/home/yamamoto/dev/ts-league-auto-input
 EnvironmentFile=/home/yamamoto/dev/ts-league-auto-input/.env.production
-ExecStart=/usr/bin/npm start
+ExecStart=/usr/bin/xvfb-run -a --server-args=-screen\ 0\ 1440x1200x24 /usr/bin/npm start
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+`PLAYWRIGHT_HEADLESS=false` で Linux 上に X Server が無い場合は `xvfb-run` を噛ませて起動する。
 
 反映:
 
