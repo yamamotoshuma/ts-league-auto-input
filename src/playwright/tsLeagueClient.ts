@@ -15,6 +15,18 @@ import { TS_LEAGUE_LOGIN_SELECTORS } from "../utils/constants";
 import { normalizeLooseKey, normalizeName, normalizeText } from "../utils/nameNormalizer";
 import { ensureAbsoluteUrl } from "../utils/url";
 
+const BATTER_FORM_SELECTOR = 'form[action="gameof_edit_complete.php"]';
+const BATTER_ROW_SELECT_SELECTOR = 'select[name^="MemberScoreOfUserId["]';
+const BATTER_ADD_CONTROL_SELECTOR = [
+  'input[type="submit"][value*="追加"]',
+  'input[type="button"][value*="追加"]',
+  'button:has-text("追加")',
+  'a:has-text("追加")',
+  'a[onclick*="AddMenber"]',
+  'input[name="add"]',
+  'button[name="add"]',
+].join(", ");
+
 function escapeAttributeValue(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
@@ -564,6 +576,60 @@ function stringifyStatValue(value: BatterStat[keyof BatterStat]): string {
 
 function isEmptySelectionValue(value: string): boolean {
   return value === "" || value === "0";
+}
+
+export async function ensureBatterRowCount(page: Page, desiredCount: number): Promise<void> {
+  const form = page.locator(BATTER_FORM_SELECTOR).first();
+  if ((await form.count()) === 0) {
+    throw new Error("野手成績フォームが見つかりません");
+  }
+
+  while (true) {
+    const currentCount = await form.locator(BATTER_ROW_SELECT_SELECTOR).count();
+    if (currentCount >= desiredCount) {
+      return;
+    }
+
+    let addButton = form.locator(BATTER_ADD_CONTROL_SELECTOR).first();
+    if ((await addButton.count()) === 0) {
+      addButton = page.locator(BATTER_ADD_CONTROL_SELECTOR).first();
+    }
+
+    if ((await addButton.count()) === 0) {
+      throw new Error(`野手入力行が不足しています (${currentCount} / ${desiredCount})`);
+    }
+
+    await addButton.scrollIntoViewIfNeeded().catch(() => undefined);
+    await addButton.click();
+
+    await page
+      .waitForFunction(
+        ({ formSelector, rowSelector, previousCount }) => {
+          const targetForm = document.querySelector(formSelector);
+          if (!targetForm) {
+            return false;
+          }
+
+          const rowCount = targetForm.querySelectorAll(rowSelector).length;
+          const bcountValue = (targetForm.querySelector('input[name="bcount"]') as HTMLInputElement | null)?.value ?? "0";
+          const bcount = Number.parseInt(bcountValue, 10);
+          return rowCount > previousCount || (!Number.isNaN(bcount) && bcount > previousCount);
+        },
+        {
+          formSelector: BATTER_FORM_SELECTOR,
+          rowSelector: BATTER_ROW_SELECT_SELECTOR,
+          previousCount: currentCount,
+        },
+        { timeout: 5000 },
+      )
+      .catch(() => undefined);
+
+    const nextCount = await form.locator(BATTER_ROW_SELECT_SELECTOR).count();
+    if (nextCount <= currentCount) {
+      const bcountValue = await form.locator('input[name="bcount"]').inputValue().catch(() => "unknown");
+      throw new Error(`野手入力行を追加できませんでした (${currentCount} -> ${nextCount}, bcount=${bcountValue})`);
+    }
+  }
 }
 
 export async function applyMapping(page: Page, mapping: MappingPreview): Promise<void> {

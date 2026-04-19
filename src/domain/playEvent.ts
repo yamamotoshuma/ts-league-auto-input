@@ -13,13 +13,33 @@ const POSITION_PREFIX_MAP: Record<string, string> = {
   右: "右",
 };
 
+const POSITION_ALIAS_MAP: Record<string, string> = {
+  投: "投",
+  捕: "捕",
+  一: "一",
+  二: "二",
+  ニ: "二",
+  三: "三",
+  遊: "遊",
+  左: "左",
+  中: "中",
+  右: "右",
+  指: "DH",
+  指名打者: "DH",
+  DH: "DH",
+};
+
 export function normalizePosition(value: string | null): string | null {
   if (!value) {
     return null;
   }
 
-  const normalized = normalizeText(value).replace(/[()（）]/g, "");
-  return normalized === "" ? null : normalized;
+  const normalized = normalizeText(value).replace(/[()（）]/g, "").replace(/\s+/g, "").toUpperCase();
+  if (normalized === "") {
+    return null;
+  }
+
+  return POSITION_ALIAS_MAP[normalized] ?? normalized;
 }
 
 export function isPlateAppearanceHeader(header: string): boolean {

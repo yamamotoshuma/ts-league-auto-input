@@ -17,6 +17,7 @@ import { openOrderMadeGame } from "./orderMadeClient";
 import { openTsLeaguePublicGame } from "./tsLeaguePublicClient";
 import {
   applyMapping,
+  ensureBatterRowCount,
   inspectTargetForm,
   openTargetGame,
   submitTargetForm,
@@ -143,6 +144,17 @@ export class PlaywrightJobRunner {
       candidateCount: targetGameResult.candidates.length,
     });
     await captureScreenshot(page, this.artifactStore, jobId, "target-game-detail", context.attachArtifact);
+
+    const desiredBatterRowCount = sourcePreview.batterStats.reduce(
+      (max, stat) => Math.max(max, stat.battingOrder ?? 0),
+      sourcePreview.batterStats.length,
+    );
+    await context.updateLastStep("target.ensure-row-count");
+    await context.log("info", "target.ensure-row-count", "必要に応じて野手入力行を追加しています", {
+      desiredRowCount: desiredBatterRowCount,
+      sourcePlayerCount: sourcePreview.batterStats.length,
+    });
+    await ensureBatterRowCount(page, desiredBatterRowCount);
 
     await context.updateLastStep("target.inspect-form");
     const targetPreview = await inspectTargetForm(page);

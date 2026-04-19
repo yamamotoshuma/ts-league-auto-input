@@ -628,10 +628,12 @@
   }
 
   function renderWarnings(job) {
-    const warnings = [
-      ...(job.preview?.warnings ?? []),
-      ...(job.preview?.mapping?.warnings ?? []),
-    ];
+    const warnings = Array.from(
+      new Set([
+        ...(job.preview?.warnings ?? []),
+        ...(job.preview?.mapping?.warnings ?? []),
+      ]),
+    );
 
     if (warnings.length === 0) {
       return renderEmpty("注意事項はありません。");
