@@ -53,6 +53,7 @@ function buildBaseLines(job: JobRecord): string[] {
   return [
     `処理種別: ${workflowLabel}`,
     `実行方法: ${modeLabel(job.mode)}`,
+    ...(workflow === "park-lottery" ? [] : [`編集シーズン: ${job.targetGameSeasonYear ?? "未指定"}`]),
     workflow === "park-lottery" ? `対象内容: ${job.targetGameKey}` : `試合日: ${formatDate(job.targetGameDate)}`,
     ...(workflow === "park-lottery"
       ? []

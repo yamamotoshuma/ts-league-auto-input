@@ -133,6 +133,7 @@ export class PlaywrightJobRunner {
     await context.log("info", "target.open-list", "スカイツリーグの試合一覧を開いています");
     const targetGameResult = await openTargetGame(page, secrets.tsLeague, {
       targetGameKey: input.targetGameKey,
+      targetGameSeasonYear: input.targetGameSeasonYear,
       targetGameDate: input.targetGameDate,
       targetOpponent: input.targetOpponent,
       targetVenue: input.targetVenue,
@@ -201,6 +202,7 @@ export class PlaywrightJobRunner {
     await context.log("info", "target.verify-saved", "保存結果を再読込で検証しています");
     await openTargetGame(page, secrets.tsLeague, {
       targetGameKey: input.targetGameKey,
+      targetGameSeasonYear: input.targetGameSeasonYear,
       targetGameDate: input.targetGameDate,
       targetOpponent: input.targetOpponent,
       targetVenue: input.targetVenue,
@@ -240,6 +242,7 @@ export class PlaywrightJobRunner {
     await context.log("info", "target.open-list", "スカイツリーグの試合一覧を開いています");
     const targetGameResult = await openTargetGame(page, secrets.tsLeague, {
       targetGameKey: input.targetGameKey,
+      targetGameSeasonYear: input.targetGameSeasonYear,
       targetGameDate: input.targetGameDate,
       targetOpponent: input.targetOpponent,
       targetVenue: input.targetVenue,
@@ -340,6 +343,7 @@ export class PlaywrightJobRunner {
     await context.log("info", "target.verify-saved", "保存結果を再読込で検証しています");
     await openTargetGame(page, secrets.tsLeague, {
       targetGameKey: input.targetGameKey,
+      targetGameSeasonYear: input.targetGameSeasonYear,
       targetGameDate: input.targetGameDate,
       targetOpponent: input.targetOpponent,
       targetVenue: input.targetVenue,

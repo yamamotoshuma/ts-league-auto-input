@@ -19,6 +19,7 @@ export function makeDedupeKey(input: JobInput): string {
     sourceGameId: input.sourceGameId,
     sourceUrl: input.sourceUrl,
     targetGameKey: input.targetGameKey,
+    targetGameSeasonYear: input.targetGameSeasonYear,
     targetGameDate: input.targetGameDate,
     targetOpponent: input.targetOpponent,
     targetVenue: input.targetVenue,

@@ -13,6 +13,7 @@ import type {
 import type { Page } from "playwright";
 import { TS_LEAGUE_LOGIN_SELECTORS } from "../utils/constants";
 import { normalizeLooseKey, normalizeName, normalizeText } from "../utils/nameNormalizer";
+import { ensureAbsoluteUrl } from "../utils/url";
 
 function escapeAttributeValue(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
@@ -95,6 +96,7 @@ export async function openTargetGame(
   secrets: TsLeagueSecrets,
   params: {
     targetGameKey: string;
+    targetGameSeasonYear: string | null;
     targetGameDate: string | null;
     targetOpponent: string | null;
     targetVenue: string | null;
@@ -104,38 +106,113 @@ export async function openTargetGame(
   await ensureTsLeagueLogin(page, secrets);
   await page.goto(secrets.gameListUrl, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle").catch(() => undefined);
+  const requestedSeasonYear = params.targetGameSeasonYear;
 
-  const rawCandidates = await page.evaluate((action) => {
-    return Array.from(document.forms)
-      .map((form, formIndex) => {
-        const htmlForm = form as HTMLFormElement;
-        const formAction = htmlForm.getAttribute("action") ?? "";
-        const row = htmlForm.closest("tr");
-        const rowText = row ? (row.textContent ?? "").replace(/\s+/g, " ").trim() : "";
-        return {
-          formIndex,
-          action: formAction,
-          label: rowText,
-          href: null,
-          score: 0,
-        };
-      })
-      .filter((item) => item.action === action && item.label !== "");
-  }, params.editAction ?? "gameof_edit.php");
-  const candidates = rawCandidates
-    .map((candidate) => ({
-      ...candidate,
-      score: scoreGameCandidate(
-        candidate.label,
-        params.targetGameKey,
-        params.targetGameDate,
-        params.targetOpponent,
-        params.targetVenue,
-      ),
-    }))
-    .sort((left, right) => right.score - left.score);
+  const inspectSeasonOptions = async () => {
+    const rawOptions = await page.evaluate(() => {
+      const extractYear = (label: string, value: string) => {
+        const labelMatch = label.match(/(20\d{2})シーズン/);
+        if (labelMatch) {
+          return labelMatch[1];
+        }
 
-  const best = candidates[0] ?? null;
+        const valueMatch = value.match(/[?&]year=(\d{4})/);
+        return valueMatch ? valueMatch[1] : null;
+      };
+
+      const select = Array.from(document.querySelectorAll("select")).find((candidate) =>
+        Array.from(candidate.options).some((option) => /\/team\/order-made\/game\.php\?type=1/.test(option.value)),
+      ) as HTMLSelectElement | undefined;
+
+      if (!select) {
+        return [];
+      }
+
+      return Array.from(select.options)
+        .map((option) => ({
+          value: option.value,
+          label: (option.textContent || "").replace(/\s+/g, " ").trim(),
+          selected: option.selected,
+          year: extractYear((option.textContent || "").replace(/\s+/g, " ").trim(), option.value),
+        }))
+        .filter((option) => option.value && option.value !== "#");
+    });
+
+    return rawOptions.map((option) => ({
+      ...option,
+      absoluteUrl: ensureAbsoluteUrl(option.value, page.url()),
+    }));
+  };
+
+  const collectCandidates = async () => {
+    const rawCandidates = await page.evaluate((action) => {
+      return Array.from(document.forms)
+        .map((form, formIndex) => {
+          const htmlForm = form as HTMLFormElement;
+          const formAction = htmlForm.getAttribute("action") ?? "";
+          const row = htmlForm.closest("tr");
+          const rowText = row ? (row.textContent ?? "").replace(/\s+/g, " ").trim() : "";
+          return {
+            formIndex,
+            action: formAction,
+            label: rowText,
+            href: null,
+            score: 0,
+          };
+        })
+        .filter((item) => item.action === action && item.label !== "");
+    }, params.editAction ?? "gameof_edit.php");
+
+    return rawCandidates
+      .map((candidate) => ({
+        ...candidate,
+        score: scoreGameCandidate(
+          candidate.label,
+          params.targetGameKey,
+          params.targetGameDate,
+          params.targetOpponent,
+          params.targetVenue,
+        ),
+      }))
+      .sort((left, right) => right.score - left.score);
+  };
+
+  const seasonOptions = await inspectSeasonOptions();
+  const goToSeason = async (absoluteUrl: string) => {
+    await page.goto(absoluteUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+  };
+
+  let candidates = await collectCandidates();
+  let best = candidates[0] ?? null;
+
+  if (requestedSeasonYear) {
+    const matchingSeason = seasonOptions.find((option) => option.year === requestedSeasonYear);
+    if (!matchingSeason || !matchingSeason.absoluteUrl) {
+      const availableYears = seasonOptions.map((option) => option.year).filter(Boolean).join(", ");
+      throw new Error(`編集シーズン ${requestedSeasonYear} が見つかりません。利用可能: ${availableYears || "なし"}`);
+    }
+
+    if (!matchingSeason.selected) {
+      await goToSeason(matchingSeason.absoluteUrl);
+      candidates = await collectCandidates();
+      best = candidates[0] ?? null;
+    }
+  } else if (!best || best.score <= 0) {
+    for (const seasonOption of seasonOptions) {
+      if (seasonOption.selected || !seasonOption.absoluteUrl) {
+        continue;
+      }
+
+      await goToSeason(seasonOption.absoluteUrl);
+      candidates = await collectCandidates();
+      best = candidates[0] ?? null;
+      if (best && best.score > 0) {
+        break;
+      }
+    }
+  }
+
   if (!best || best.score <= 0) {
     throw new Error("target game candidate was not found");
   }

@@ -31,6 +31,20 @@ function parseWorkflow(value: unknown): Workflow {
   return "batter";
 }
 
+function parseTargetGameSeasonYear(value: unknown): string | null {
+  const normalized = toNullableString(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const digits = normalized.replace(/[^0-9]/g, "");
+  if (digits.length !== 4) {
+    throw new Error("編集シーズンは4桁の西暦で入力してください");
+  }
+
+  return digits;
+}
+
 function parseJobInput(body: unknown): JobInput {
   if (!body || typeof body !== "object") {
     throw new Error("リクエスト本文は JSON オブジェクトである必要があります");
@@ -63,6 +77,7 @@ function parseJobInput(body: unknown): JobInput {
       sourceGameId,
       sourceUrl,
       targetGameKey: targetGameKey ?? "",
+      targetGameSeasonYear: null,
       targetGameDate: null,
       targetOpponent: null,
       targetVenue: null,
@@ -82,6 +97,7 @@ function parseJobInput(body: unknown): JobInput {
     sourceGameId,
     sourceUrl,
     targetGameKey,
+    targetGameSeasonYear: parseTargetGameSeasonYear(input.targetGameSeasonYear),
     targetGameDate: toNullableString(input.targetGameDate),
     targetOpponent: toNullableString(input.targetOpponent),
     targetVenue: toNullableString(input.targetVenue),

@@ -20,6 +20,7 @@ async function main() {
     const page = await createPage(context);
     await openTargetGame(page, secrets.tsLeague, {
       targetGameKey,
+      targetGameSeasonYear: args.get("--target-game-season-year") ?? null,
       targetGameDate: args.get("--target-game-date") ?? null,
       targetOpponent: args.get("--target-opponent") ?? null,
       targetVenue: args.get("--target-venue") ?? null,

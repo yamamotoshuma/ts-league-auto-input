@@ -27,6 +27,7 @@ async function main() {
           sourceGameId,
           sourceUrl,
           targetGameKey: "manual-check",
+          targetGameSeasonYear: null,
           targetGameDate: null,
           targetOpponent: null,
           targetVenue: null,

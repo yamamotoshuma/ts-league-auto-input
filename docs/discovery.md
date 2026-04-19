@@ -56,6 +56,14 @@ Inference from authenticated data:
 
 - Post-login landing page: `https://ts-league.com/team/order-made/main.php`
 - Game list page after login: `https://ts-league.com/team/order-made/game.php`
+- The page has a season switcher `select` above the result rows.
+  - Selected option on 2026-04-19:
+    - value: `/team/order-made/game.php?type=1`
+    - label: `2026シーズンの結果編集をする`
+  - Alternate season observed:
+    - value: `/team/order-made/game.php?type=1&year=2025`
+    - label: `2025シーズンの結果編集をする`
+- As of 2026-04-19, `https://ts-league.com/team/order-made/game.php?type=1&year=2025` showed `2025シーズンの結果編集` and contained 2026-04-19 fixtures, so the editing season cannot be inferred safely from the match date alone.
 - The batting-edit navigation is not an anchor link. It is a normal HTML `POST` form:
   - action: `gameof_edit.php`
   - hidden fields observed on the relevant row:

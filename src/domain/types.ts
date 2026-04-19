@@ -11,6 +11,7 @@ export interface JobInput {
   sourceGameId: string | null;
   sourceUrl: string | null;
   targetGameKey: string;
+  targetGameSeasonYear: string | null;
   targetGameDate: string | null;
   targetOpponent: string | null;
   targetVenue: string | null;

@@ -40,6 +40,7 @@ async function main() {
         sourceGameId,
         sourceUrl,
         targetGameKey: "discovery",
+        targetGameSeasonYear: null,
         targetGameDate: null,
         targetOpponent: null,
         targetVenue: null,

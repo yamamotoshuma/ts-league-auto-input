@@ -244,6 +244,10 @@ export function renderIndexPage(jobs: JobRecord[]): string {
                       <input name="targetGameKey" required data-mirror-field placeholder="例: 3/7 9:00 光が丘公園 Re">
                     </label>
                     <label class="field">
+                      <span class="field-label">編集シーズン</span>
+                      <input name="targetGameSeasonYear" inputmode="numeric" pattern="[0-9]{4}" data-mirror-field placeholder="例: 2025">
+                    </label>
+                    <label class="field">
                       <span class="field-label">日付</span>
                       <input name="targetGameDate" type="date" data-mirror-field placeholder="2026-03-07">
                     </label>
@@ -311,6 +315,10 @@ export function renderIndexPage(jobs: JobRecord[]): string {
                     <label class="field field-wide">
                       <span class="field-label">対象試合</span>
                       <input name="targetGameKey" required data-mirror-field placeholder="例: 3/7 9:00 光が丘公園 Re">
+                    </label>
+                    <label class="field">
+                      <span class="field-label">編集シーズン</span>
+                      <input name="targetGameSeasonYear" inputmode="numeric" pattern="[0-9]{4}" data-mirror-field placeholder="例: 2025">
                     </label>
                     <label class="field">
                       <span class="field-label">日付</span>

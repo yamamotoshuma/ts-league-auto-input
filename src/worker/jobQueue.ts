@@ -153,6 +153,7 @@ export class JobQueue {
         sourceGameId: existing.sourceGameId,
         sourceUrl: existing.sourceUrl,
         targetGameKey: existing.targetGameKey,
+        targetGameSeasonYear: existing.targetGameSeasonYear,
         targetGameDate: existing.targetGameDate,
         targetOpponent: existing.targetOpponent,
         targetVenue: existing.targetVenue,
