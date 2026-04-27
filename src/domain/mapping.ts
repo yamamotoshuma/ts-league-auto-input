@@ -54,6 +54,40 @@ function getTargetPosition(target: TargetPlayerRow): string | null {
   return normalizePosition(target.selectedPositionLabel);
 }
 
+function scorePlayerNameAgainstLabel(sourcePlayerName: string, label: string): number {
+  const normalizedLabel = normalizeTargetPlayerName(label);
+  if (normalizedLabel === "") {
+    return 0;
+  }
+
+  const sourceCandidates = expandNameCandidates(sourcePlayerName);
+  let score = 0;
+
+  for (const candidate of sourceCandidates) {
+    if (normalizedLabel === candidate) {
+      score = Math.max(score, 100);
+      continue;
+    }
+
+    if (normalizedLabel.includes(candidate) || candidate.includes(normalizedLabel)) {
+      score = Math.max(score, 80);
+    }
+  }
+
+  return score;
+}
+
+function scoreSelectablePlayerOption(sourcePlayerName: string, target: TargetPlayerRow): number {
+  if (!isPlaceholderLabel(target.playerLabel) || !target.playerControl) {
+    return 0;
+  }
+
+  return target.playerOptions.reduce(
+    (best, option) => Math.max(best, scorePlayerNameAgainstLabel(sourcePlayerName, option.label)),
+    0,
+  );
+}
+
 function compareConfidence(source: BatterStat, target: TargetPlayerRow): MatchConfidence {
   const sourcePosition = normalizePosition(source.position);
   const targetPosition = getTargetPosition(target);
@@ -87,14 +121,15 @@ function scoreTargetRow(source: BatterStat, target: TargetPlayerRow): number {
     !isPlaceholderLabel(target.playerLabel) && namesLooselyMatch(source.playerName, normalizeTargetPlayerName(target.playerLabel))
       ? 15
       : 0;
+  const selectablePlayerBonus = scoreSelectablePlayerOption(source.playerName, target);
 
   switch (confidence) {
     case "high":
-      return 100 + orderBonus + positionBonus + nameBonus;
+      return 100 + orderBonus + positionBonus + nameBonus + selectablePlayerBonus;
     case "medium":
-      return 60 + orderBonus + positionBonus + nameBonus;
+      return 60 + orderBonus + positionBonus + nameBonus + selectablePlayerBonus;
     default:
-      return 0;
+      return selectablePlayerBonus > 0 ? 50 + orderBonus + positionBonus + selectablePlayerBonus : 0;
   }
 }
 
@@ -142,7 +177,11 @@ function buildAppearanceAssignments(
   return source.plateAppearanceResults.map((appearance) => {
     const fieldGroup =
       target.appearanceFields.find((field) => field.appearanceIndex === appearance.appearanceIndex) ?? null;
-    const currentControl = fieldGroup?.main ?? null;
+    const appearanceTurn = appearance.appearanceTurn ?? 1;
+    const currentControl =
+      appearanceTurn === 1 ? fieldGroup?.main ?? null : appearanceTurn === 2 ? fieldGroup?.sub ?? null : null;
+    const rbiControl =
+      appearanceTurn === 1 ? fieldGroup?.rbi ?? null : appearanceTurn === 2 ? fieldGroup?.rbiSub ?? null : null;
     const keepCurrentValue =
       isMeaningfulAppearanceValue(currentControl?.currentValue ?? null) &&
       isTargetEventLabelCompatible(appearance.rawText, currentControl?.currentLabel ?? null);
@@ -154,7 +193,7 @@ function buildAppearanceAssignments(
       : findTargetEventOption(appearance.rawText, targetPreview.eventOptions);
     const warnings: string[] = [];
 
-    if (!fieldGroup?.main) {
+    if (!currentControl) {
       warnings.push("target appearance slot not found");
     }
 
@@ -176,7 +215,7 @@ function buildAppearanceAssignments(
       targetOptionValue: option?.value ?? null,
       targetOptionLabel: option?.label ?? null,
       targetControl: currentControl,
-      rbiControl: fieldGroup?.rbi ?? null,
+      rbiControl,
       warnings,
     };
   });
@@ -316,8 +355,13 @@ function resolvePositionSelection(source: BatterStat, target: TargetPlayerRow): 
   };
 }
 
-function createAssignment(source: BatterStat, targetPreview: TargetFormPreview): MappingAssignment {
+function createAssignment(
+  source: BatterStat,
+  targetPreview: TargetFormPreview,
+  reservedLineupIndexes: Set<number>,
+): MappingAssignment {
   const sortedCandidates = targetPreview.playerRows
+    .filter((target) => target.lineupIndex === null || !reservedLineupIndexes.has(target.lineupIndex))
     .map((target) => ({ target, score: scoreTargetRow(source, target) }))
     .sort((left, right) => right.score - left.score);
 
@@ -343,11 +387,12 @@ function createAssignment(source: BatterStat, targetPreview: TargetFormPreview):
     warnings.push("multiple target rows matched with equal score");
   }
 
-  const confidence = compareConfidence(source, best.target);
   const playerSelection = resolvePlayerSelection(source, best.target);
   const positionSelection = resolvePositionSelection(source, best.target);
+  const baseConfidence = compareConfidence(source, best.target);
   const displayTargetLabel = playerSelection.targetOptionLabel ?? best.target.playerLabel;
   const nameMatches = !isPlaceholderLabel(displayTargetLabel) && namesLooselyMatch(source.playerName, displayTargetLabel);
+  const confidence: MatchConfidence = baseConfidence === "none" && nameMatches ? "medium" : baseConfidence;
   if (!nameMatches) {
     warnings.push("matched by batting order / position because player name did not match directly");
   }
@@ -414,7 +459,15 @@ export function buildMappingPreview(
   sourceStats: BatterStat[],
   targetPreview: TargetFormPreview,
 ): MappingPreview {
-  const assignments = sourceStats.map((source) => createAssignment(source, targetPreview));
+  const reservedLineupIndexes = new Set<number>();
+  const assignments = sourceStats.map((source) => {
+    const assignment = createAssignment(source, targetPreview, reservedLineupIndexes);
+    if (assignment.targetLineupIndex !== null) {
+      reservedLineupIndexes.add(assignment.targetLineupIndex);
+    }
+
+    return assignment;
+  });
   const matchedLineupIndexes = new Set(
     assignments
       .map((assignment) => assignment.targetLineupIndex)

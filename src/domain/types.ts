@@ -86,6 +86,7 @@ export interface BatterStat {
 
 export interface PlateAppearanceResult {
   appearanceIndex: number;
+  appearanceTurn?: number;
   rawText: string;
   normalizedText: string;
 }

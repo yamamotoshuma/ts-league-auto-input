@@ -48,9 +48,20 @@ export function isPlateAppearanceHeader(header: string): boolean {
 
 export function extractPlateAppearanceResults(headers: string[], rowValues: string[]): PlateAppearanceResult[] {
   const results: PlateAppearanceResult[] = [];
+  let currentAppearanceIndex: number | null = null;
+  let currentAppearanceTurn = 0;
 
   headers.forEach((header, index) => {
-    if (!isPlateAppearanceHeader(header)) {
+    const normalizedHeader = normalizeText(header);
+
+    if (isPlateAppearanceHeader(normalizedHeader)) {
+      currentAppearanceIndex = Number.parseInt(normalizedHeader, 10);
+      currentAppearanceTurn = 1;
+    } else if (normalizedHeader === "" && currentAppearanceIndex !== null) {
+      currentAppearanceTurn += 1;
+    } else {
+      currentAppearanceIndex = null;
+      currentAppearanceTurn = 0;
       return;
     }
 
@@ -60,7 +71,8 @@ export function extractPlateAppearanceResults(headers: string[], rowValues: stri
     }
 
     results.push({
-      appearanceIndex: Number.parseInt(header, 10),
+      appearanceIndex: currentAppearanceIndex,
+      appearanceTurn: currentAppearanceTurn,
       rawText,
       normalizedText: normalizeLooseKey(rawText),
     });

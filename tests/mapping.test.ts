@@ -206,6 +206,7 @@ function createTargetPreview(playerRows: TargetPlayerRow[]): TargetFormPreview {
     hiddenInputs: [],
     eventOptions: [
       { value: "0", label: "-" },
+      { value: "5", label: "四球" },
       { value: "14", label: "三振" },
       { value: "15", label: "空三振" },
       { value: "32", label: "中安" },
@@ -257,6 +258,266 @@ describe("buildMappingPreview", () => {
     expect(preview.assignments[0].appearanceAssignments).toHaveLength(2);
     expect(preview.assignments[0].appearanceAssignments[0].targetOptionLabel).toBe("中安");
     expect(preview.assignments[0].appearanceAssignments[1].targetOptionLabel).toBe("ニゴ");
+    expect(isCommitReady(preview)).toBe(true);
+  });
+
+  it("maps a same-inning second plate appearance to the target sub slot", () => {
+    const source: BatterStat[] = [
+      {
+        playerName: "山田太郎",
+        battingOrder: 1,
+        position: "遊",
+        plateAppearances: 2,
+        atBats: 1,
+        runs: 0,
+        hits: 1,
+        rbi: 0,
+        doubles: 0,
+        triples: 0,
+        homeRuns: 0,
+        walks: 1,
+        hitByPitch: 0,
+        strikeouts: 1,
+        sacrificeBunts: 0,
+        sacrificeFlies: 0,
+        stolenBases: 0,
+        errors: 0,
+        plateAppearanceResults: [
+          {
+            appearanceIndex: 1,
+            appearanceTurn: 1,
+            rawText: "中安打",
+            normalizedText: "中安打",
+          },
+          {
+            appearanceIndex: 1,
+            appearanceTurn: 2,
+            rawText: "空振三振",
+            normalizedText: "空振三振",
+          },
+        ],
+      },
+    ];
+
+    const targetRow = createTargetRow({
+      appearanceFields: [
+        {
+          appearanceIndex: 1,
+          main: {
+            ...createTargetRow().appearanceFields[0].main,
+            name: "MemberScoreOf1[1]",
+          },
+          sub: {
+            ...createTargetRow().appearanceFields[0].main,
+            headerText: "1s",
+            name: "MemberScoreOf1s[1]",
+          },
+          rbi: {
+            ...createTargetRow().appearanceFields[0].rbi,
+            name: "MemberScoreOf1_daten[1]",
+          },
+          rbiSub: {
+            ...createTargetRow().appearanceFields[0].rbi,
+            headerText: "1s_daten",
+            name: "MemberScoreOf1s_daten[1]",
+          },
+        },
+      ],
+    });
+
+    const preview = buildMappingPreview(source, createTargetPreview([targetRow]));
+    expect(preview.assignments[0].appearanceAssignments).toEqual([
+      expect.objectContaining({
+        appearanceIndex: 1,
+        sourceText: "中安打",
+        targetControl: expect.objectContaining({ name: "MemberScoreOf1[1]" }),
+        targetOptionLabel: "中安",
+      }),
+      expect.objectContaining({
+        appearanceIndex: 1,
+        sourceText: "空振三振",
+        targetControl: expect.objectContaining({ name: "MemberScoreOf1s[1]" }),
+        targetOptionLabel: "空三振",
+      }),
+    ]);
+    expect(preview.assignments[0].warnings).toEqual([]);
+    expect(isCommitReady(preview)).toBe(true);
+  });
+
+  it("assigns a substitute without batting order to an available extra target row by player option", () => {
+    const source: BatterStat[] = [
+      {
+        playerName: "岩本",
+        battingOrder: 8,
+        position: "左",
+        plateAppearances: 1,
+        atBats: 1,
+        runs: 0,
+        hits: 0,
+        rbi: 0,
+        doubles: 0,
+        triples: 0,
+        homeRuns: 0,
+        walks: 0,
+        hitByPitch: 0,
+        strikeouts: 1,
+        sacrificeBunts: 0,
+        sacrificeFlies: 0,
+        stolenBases: 0,
+        errors: 0,
+        plateAppearanceResults: [
+          {
+            appearanceIndex: 3,
+            rawText: "空振三振",
+            normalizedText: "空振三振",
+          },
+        ],
+      },
+      {
+        playerName: "高橋三郎",
+        battingOrder: null,
+        position: "左",
+        plateAppearances: 1,
+        atBats: 0,
+        runs: 0,
+        hits: 0,
+        rbi: 1,
+        doubles: 0,
+        triples: 0,
+        homeRuns: 0,
+        walks: 1,
+        hitByPitch: 0,
+        strikeouts: 0,
+        sacrificeBunts: 0,
+        sacrificeFlies: 0,
+        stolenBases: 0,
+        errors: 0,
+        plateAppearanceResults: [
+          {
+            appearanceIndex: 4,
+            rawText: "四球",
+            normalizedText: "四球",
+          },
+        ],
+      },
+    ];
+
+    const starterRow = createTargetRow({
+      rowIndex: 8,
+      lineupIndex: 8,
+      playerLabel: "[19]岩本",
+      normalizedPlayerLabel: "岩本",
+      selectedUserId: "19",
+      playerControl: {
+        ...createTargetRow().playerControl,
+        rowIndex: 8,
+        name: "MemberScoreOfUserId[8]",
+        currentValue: "19",
+        currentLabel: "[19]岩本",
+      },
+      selectedPositionLabel: "左",
+      positionControl: {
+        ...createTargetRow().positionControl,
+        rowIndex: 8,
+        name: "MemberScoreOfSyubi[8]",
+        currentValue: "7",
+        currentLabel: "左",
+      },
+      appearanceFields: [
+        {
+          appearanceIndex: 3,
+          main: {
+            ...createTargetRow().appearanceFields[0].main,
+            rowIndex: 8,
+            name: "MemberScoreOf3[8]",
+          },
+          sub: null,
+          rbi: {
+            ...createTargetRow().appearanceFields[0].rbi,
+            rowIndex: 8,
+            name: "MemberScoreOf3_daten[8]",
+          },
+          rbiSub: null,
+        },
+      ],
+    });
+
+    const substituteRow = createTargetRow({
+      rowIndex: 11,
+      lineupIndex: 11,
+      playerLabel: "-",
+      normalizedPlayerLabel: "",
+      selectedUserId: "0",
+      playerControl: {
+        ...createTargetRow().playerControl,
+        rowIndex: 11,
+        name: "MemberScoreOfUserId[11]",
+        currentValue: "0",
+        currentLabel: "-",
+      },
+      playerOptions: [
+        createPlayerOption("0", "-"),
+        createPlayerOption("990013", "[03]高橋三郎"),
+      ],
+      selectedPositionLabel: "-",
+      positionControl: {
+        ...createTargetRow().positionControl,
+        rowIndex: 11,
+        name: "MemberScoreOfSyubi[11]",
+        currentValue: "",
+        currentLabel: "-",
+      },
+      positionOptions: [
+        createPlayerOption("0", "-"),
+        createPlayerOption("7", "左"),
+      ],
+      statFields: {
+        rbi: {
+          ...createTargetRow().statFields.rbi,
+          rowIndex: 11,
+          name: "MemberScoreOfDaten[11]",
+        },
+        runs: {
+          ...createTargetRow().statFields.runs,
+          rowIndex: 11,
+          name: "MemberScoreOfTokuten[11]",
+        },
+        stolenBases: {
+          ...createTargetRow().statFields.stolenBases,
+          rowIndex: 11,
+          name: "MemberScoreOfTorui[11]",
+        },
+        errors: {
+          ...createTargetRow().statFields.errors,
+          rowIndex: 11,
+          name: "MemberScoreOfEr[11]",
+        },
+      },
+      appearanceFields: [
+        {
+          appearanceIndex: 4,
+          main: {
+            ...createTargetRow().appearanceFields[0].main,
+            rowIndex: 11,
+            name: "MemberScoreOf4[11]",
+          },
+          sub: null,
+          rbi: {
+            ...createTargetRow().appearanceFields[0].rbi,
+            rowIndex: 11,
+            name: "MemberScoreOf4_daten[11]",
+          },
+          rbiSub: null,
+        },
+      ],
+    });
+
+    const preview = buildMappingPreview(source, createTargetPreview([starterRow, substituteRow]));
+    expect(preview.assignments[0].targetLineupIndex).toBe(8);
+    expect(preview.assignments[1].targetLineupIndex).toBe(11);
+    expect(preview.assignments[1].playerSelection?.targetOptionLabel).toBe("[03]高橋三郎");
+    expect(preview.assignments[1].positionSelection?.targetOptionLabel).toBe("左");
+    expect(preview.assignments[1].warnings).toEqual([]);
     expect(isCommitReady(preview)).toBe(true);
   });
 
