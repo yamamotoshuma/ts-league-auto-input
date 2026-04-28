@@ -11,7 +11,6 @@ import type {
 } from "../domain/types";
 import {
   buildJobFailedMessage,
-  buildJobStartedMessage,
   buildJobSucceededMessage,
 } from "../domain/jobNotification";
 import { ArtifactStore } from "../infra/artifactStore";
@@ -210,20 +209,16 @@ export class JobQueue {
 
   private async sendLineNotification(
     jobId: string,
-    notifier: LineNotifier | null,
-    phase: "started" | "succeeded" | "failed",
+    phase: "succeeded" | "failed",
     job: JobRecord,
   ): Promise<void> {
+    const notifier = await this.loadLineNotifier(jobId);
     if (!notifier) {
       return;
     }
 
     const message =
-      phase === "started"
-        ? buildJobStartedMessage(job)
-        : phase === "succeeded"
-          ? buildJobSucceededMessage(job, job.resultSummary)
-          : buildJobFailedMessage(job, job.errorSummary);
+      phase === "succeeded" ? buildJobSucceededMessage(job, job.resultSummary) : buildJobFailedMessage(job, job.errorSummary);
 
     try {
       await notifier.send(message);
@@ -258,7 +253,7 @@ export class JobQueue {
 
           const currentJob = await this.store.get(jobId).catch(() => null);
           try {
-            await this.failJob(jobId, error, currentJob, null);
+            await this.failJob(jobId, error, currentJob);
           } catch (failError) {
             console.error(`[job-queue] failed to mark ${jobId} as failed`, failError);
           }
@@ -283,17 +278,11 @@ export class JobQueue {
       logs: [...current.logs, createLogEntry("info", "job.started", "ジョブを開始しました")],
     }));
 
-    const lineNotifier = await this.loadLineNotifier(jobId);
-    const startedJob = await this.store.get(jobId);
-    if (startedJob) {
-      await this.sendLineNotification(jobId, lineNotifier, "started", startedJob);
-    }
-
     let secrets: AppSecrets;
     try {
       secrets = await loadSecrets(this.projectRoot);
     } catch (error) {
-      await this.failJob(jobId, error, null, lineNotifier);
+      await this.failJob(jobId, error, null);
       return;
     }
 
@@ -344,10 +333,10 @@ export class JobQueue {
       }));
       const succeededJob = await this.store.get(jobId);
       if (succeededJob) {
-        await this.sendLineNotification(jobId, lineNotifier, "succeeded", succeededJob);
+        await this.sendLineNotification(jobId, "succeeded", succeededJob);
       }
     } catch (error) {
-      await this.failJob(jobId, error, await this.store.get(jobId), lineNotifier);
+      await this.failJob(jobId, error, await this.store.get(jobId));
     }
   }
 
@@ -355,7 +344,6 @@ export class JobQueue {
     jobId: string,
     error: unknown,
     currentJob: JobRecord | null,
-    lineNotifier: LineNotifier | null,
   ): Promise<void> {
     const latestJob = currentJob ?? (await this.store.get(jobId));
     const message = error instanceof Error ? error.message : String(error);
@@ -376,7 +364,7 @@ export class JobQueue {
 
     const failedJob = await this.store.get(jobId);
     if (failedJob) {
-      await this.sendLineNotification(jobId, lineNotifier, "failed", failedJob);
+      await this.sendLineNotification(jobId, "failed", failedJob);
     }
   }
 }

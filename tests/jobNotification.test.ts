@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildJobFailedMessage,
-  buildJobStartedMessage,
   buildJobSucceededMessage,
 } from "../src/domain/jobNotification";
 import type { JobRecord } from "../src/domain/types";
@@ -33,14 +32,7 @@ function createJobRecord(): JobRecord {
 }
 
 describe("jobNotification", () => {
-  it("builds a started message with match date and opponent", () => {
-    const message = buildJobStartedMessage(createJobRecord());
-    expect(message).toContain("ジョブを開始しました");
-    expect(message).toContain("試合日: 2026/3/7");
-    expect(message).toContain("対戦相手: Re");
-  });
-
-  it("builds a success message with result summary", () => {
+  it("builds a compact success message with result summary", () => {
     const job = createJobRecord();
     const message = buildJobSucceededMessage(job, {
       message: "ok",
@@ -52,12 +44,16 @@ describe("jobNotification", () => {
       targetGameUrl: "https://example.com",
     });
 
-    expect(message).toContain("ジョブが完了しました");
-    expect(message).toContain("対応できた人数: 9");
-    expect(message).toContain("保存結果の確認: 済み");
+    expect(message).toContain("【TS-League自動反映】完了");
+    expect(message).toContain("処理: 野手成績 / 保存実行");
+    expect(message).toContain("対象: 2026/3/7 / Re / 光が丘公園");
+    expect(message).toContain("結果: 対応 9 / 取得 9");
+    expect(message).toContain("保存確認: 済み");
+    expect(message).not.toContain("ジョブID");
+    expect(message).not.toContain("編集シーズン");
   });
 
-  it("builds an error message with step and content", () => {
+  it("builds a compact error message with step and content", () => {
     const job = createJobRecord();
     const message = buildJobFailedMessage(job, {
       message: "保存に失敗しました",
@@ -66,9 +62,10 @@ describe("jobNotification", () => {
       candidateCauses: [],
     });
 
-    expect(message).toContain("ジョブでエラーが発生しました");
-    expect(message).toContain("発生工程: 保存を実行");
+    expect(message).toContain("【TS-League自動反映】エラー");
+    expect(message).toContain("工程: 保存を実行");
     expect(message).toContain("内容: 保存に失敗しました");
+    expect(message).not.toContain("ジョブID");
   });
 
   it("builds a park lottery success message with failure details only for failed entries", () => {
@@ -154,10 +151,10 @@ describe("jobNotification", () => {
       targetGameUrl: "https://example.com",
     });
 
-    expect(message).toContain("都立公園抽選が完了しました");
-    expect(message).toContain("総数: 2");
-    expect(message).toContain("成功件数: 1");
-    expect(message).toContain("失敗件数: 1");
+    expect(message).toContain("【TS-League自動反映】完了");
+    expect(message).toContain("処理: 都立公園抽選 / 保存実行");
+    expect(message).toContain("結果: 成功 1 / 総数 2");
+    expect(message).toContain("失敗: 1");
     expect(message).toContain("1004156 / 浮間公園 / 野球場 / 5月1日(金曜)2026年 / 09時00分～11時00分 / 1枠目");
     expect(message).toContain("ログイン状態を維持できませんでした");
     expect(message).not.toContain("10088063 / 浮間公園");

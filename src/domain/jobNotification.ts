@@ -46,20 +46,21 @@ function stepLabel(value: string | null | undefined): string {
   return STEP_LABELS[value] ?? value;
 }
 
-function buildBaseLines(job: JobRecord): string[] {
+function workflowLabel(job: JobRecord): string {
   const workflow = job.workflow ?? "batter";
-  const workflowLabel =
-    workflow === "pitcher" ? "投手成績" : workflow === "park-lottery" ? "都立公園抽選" : "野手成績";
+  return workflow === "pitcher" ? "投手成績" : workflow === "park-lottery" ? "都立公園抽選" : "野手成績";
+}
+
+function buildSummaryLines(job: JobRecord): string[] {
+  const workflow = job.workflow ?? "batter";
+  const target =
+    workflow === "park-lottery"
+      ? job.targetGameKey
+      : [formatDate(job.targetGameDate), job.targetOpponent, job.targetVenue].filter(Boolean).join(" / ");
+
   return [
-    `処理種別: ${workflowLabel}`,
-    `実行方法: ${modeLabel(job.mode)}`,
-    ...(workflow === "park-lottery" ? [] : [`編集シーズン: ${job.targetGameSeasonYear ?? "未指定"}`]),
-    workflow === "park-lottery" ? `対象内容: ${job.targetGameKey}` : `試合日: ${formatDate(job.targetGameDate)}`,
-    ...(workflow === "park-lottery"
-      ? []
-      : [`対戦相手: ${job.targetOpponent ?? "未指定"}`, `球場: ${job.targetVenue ?? "未指定"}`]),
-    `${workflow === "park-lottery" ? "対象" : "対象試合"}: ${job.targetGameKey}`,
-    `ジョブID: ${job.id}`,
+    `処理: ${workflowLabel(job)} / ${modeLabel(job.mode)}`,
+    `対象: ${target || job.targetGameKey}`,
   ];
 }
 
@@ -99,36 +100,32 @@ function buildParkLotterySummary(job: JobRecord): { total: number; success: numb
   };
 }
 
-export function buildJobStartedMessage(job: JobRecord): string {
-  return [
-    "【スカイツリーグ成績自動反映】",
-    "ジョブを開始しました",
-    ...buildBaseLines(job),
-  ].join("\n");
+function limitDetails(details: string[], max = 3): string[] {
+  if (details.length <= max) {
+    return details;
+  }
+
+  return [...details.slice(0, max), `ほか${details.length - max}件`];
 }
 
 export function buildJobSucceededMessage(job: JobRecord, resultSummary: JobResultSummary | null): string {
   if (job.workflow === "park-lottery") {
     const parkSummary = buildParkLotterySummary(job);
     return [
-      "【スカイツリーグ成績自動反映】",
-      "都立公園抽選が完了しました",
-      ...buildBaseLines(job),
-      `総数: ${parkSummary?.total ?? "-"}`,
-      `成功件数: ${parkSummary?.success ?? "-"}`,
-      `失敗件数: ${parkSummary?.failed ?? "-"}`,
-      ...(parkSummary && parkSummary.details.length > 0 ? ["失敗詳細:", ...parkSummary.details] : []),
+      "【TS-League自動反映】完了",
+      ...buildSummaryLines(job),
+      `結果: 成功 ${parkSummary?.success ?? "-"} / 総数 ${parkSummary?.total ?? "-"}`,
+      ...(parkSummary?.failed ? [`失敗: ${parkSummary.failed}`] : []),
+      ...(parkSummary && parkSummary.details.length > 0 ? ["失敗詳細:", ...limitDetails(parkSummary.details)] : []),
     ].join("\n");
   }
 
   return [
-    "【スカイツリーグ成績自動反映】",
-    "ジョブが完了しました",
-    ...buildBaseLines(job),
-    `取得した選手数: ${resultSummary?.sourcePlayerCount ?? "-"}`,
-    `対応できた人数: ${resultSummary?.matchedPlayers ?? "-"}`,
-    `対応できなかった人数: ${resultSummary?.unmappedPlayers ?? "-"}`,
-    `保存結果の確認: ${resultSummary?.saved ? "済み" : "なし"}`,
+    "【TS-League自動反映】完了",
+    ...buildSummaryLines(job),
+    `結果: 対応 ${resultSummary?.matchedPlayers ?? "-"} / 取得 ${resultSummary?.sourcePlayerCount ?? "-"}`,
+    `未対応: ${resultSummary?.unmappedPlayers ?? "-"}`,
+    `保存確認: ${resultSummary?.saved ? "済み" : "なし"}`,
   ].join("\n");
 }
 
@@ -136,23 +133,21 @@ export function buildJobFailedMessage(job: JobRecord, errorSummary: JobErrorSumm
   if (job.workflow === "park-lottery") {
     const parkSummary = buildParkLotterySummary(job);
     return [
-      "【スカイツリーグ成績自動反映】",
-      "都立公園抽選でエラーが発生しました",
-      ...buildBaseLines(job),
-      `発生工程: ${stepLabel(errorSummary?.step)}`,
+      "【TS-League自動反映】エラー",
+      ...buildSummaryLines(job),
+      `工程: ${stepLabel(errorSummary?.step)}`,
       `内容: ${errorSummary?.message ?? "不明"}`,
-      `総数: ${parkSummary?.total ?? "-"}`,
-      `成功件数: ${parkSummary?.success ?? "-"}`,
-      `失敗件数: ${parkSummary?.failed ?? "-"}`,
-      ...(parkSummary && parkSummary.details.length > 0 ? ["失敗詳細:", ...parkSummary.details] : []),
+      ...(parkSummary
+        ? [`結果: 成功 ${parkSummary.success} / 総数 ${parkSummary.total}`, `失敗: ${parkSummary.failed}`]
+        : []),
+      ...(parkSummary && parkSummary.details.length > 0 ? ["失敗詳細:", ...limitDetails(parkSummary.details)] : []),
     ].join("\n");
   }
 
   return [
-    "【スカイツリーグ成績自動反映】",
-    "ジョブでエラーが発生しました",
-    ...buildBaseLines(job),
-    `発生工程: ${stepLabel(errorSummary?.step)}`,
+    "【TS-League自動反映】エラー",
+    ...buildSummaryLines(job),
+    `工程: ${stepLabel(errorSummary?.step)}`,
     `内容: ${errorSummary?.message ?? "不明"}`,
   ].join("\n");
 }
