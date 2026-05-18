@@ -132,6 +132,7 @@ export function getTargetEventLabelCandidates(sourceText: string): string[] {
   if (normalized === "") {
     return [];
   }
+  const normalizedUpper = normalized.toUpperCase();
 
   if (normalized.includes("敬遠")) {
     return ["敬遠", "四球"];
@@ -212,7 +213,7 @@ export function getTargetEventLabelCandidates(sourceText: string): string[] {
     return prefix ? [`${prefix}ゴ`, "アゴ"] : ["アゴ"];
   }
 
-  if (normalized.includes("野選")) {
+  if (normalized.includes("野選") || normalizedUpper.includes("FC")) {
     return prefix ? [`${prefix}選`, "野選"] : ["野選"];
   }
 

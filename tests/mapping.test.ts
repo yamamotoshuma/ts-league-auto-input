@@ -1333,4 +1333,48 @@ describe("verifyAppliedMapping", () => {
     expect(preview.assignments[0].warnings).toEqual([]);
     expect(isCommitReady(preview)).toBe(true);
   });
+
+  it("maps fielder's choice FC notation to the matching target choice", () => {
+    const source: BatterStat[] = [
+      {
+        playerName: "山田太郎",
+        battingOrder: 1,
+        position: "遊",
+        plateAppearances: 1,
+        atBats: 1,
+        runs: 0,
+        hits: 0,
+        rbi: 0,
+        doubles: 0,
+        triples: 0,
+        homeRuns: 0,
+        walks: 0,
+        hitByPitch: 0,
+        strikeouts: 0,
+        sacrificeBunts: 0,
+        sacrificeFlies: 0,
+        stolenBases: 0,
+        errors: 0,
+        plateAppearanceResults: [
+          {
+            appearanceIndex: 1,
+            rawText: "投FC",
+            normalizedText: "投fc",
+          },
+        ],
+      },
+    ];
+
+    const targetPreview = createTargetPreview([createTargetRow()]);
+    targetPreview.eventOptions = [
+      ...targetPreview.eventOptions,
+      { value: "11", label: "野選" },
+      { value: "120", label: "投選" },
+    ];
+
+    const preview = buildMappingPreview(source, targetPreview);
+    expect(preview.assignments[0].appearanceAssignments[0].targetOptionLabel).toBe("投選");
+    expect(preview.assignments[0].warnings).toEqual([]);
+    expect(isCommitReady(preview)).toBe(true);
+  });
 });
