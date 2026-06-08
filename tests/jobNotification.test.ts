@@ -51,6 +51,28 @@ describe("jobNotification", () => {
     expect(message).toContain("保存確認: 済み");
     expect(message).not.toContain("ジョブID");
     expect(message).not.toContain("編集シーズン");
+    expect(message).not.toContain("⚠️重要な情報⚠️");
+  });
+
+  it("adds an important manual verification notice to pitcher success messages", () => {
+    const job = {
+      ...createJobRecord(),
+      workflow: "pitcher" as const,
+    };
+    const message = buildJobSucceededMessage(job, {
+      message: "ok",
+      sourcePlayerCount: 2,
+      matchedPlayers: 2,
+      unmappedPlayers: 0,
+      saveAttempted: true,
+      saved: true,
+      targetGameUrl: "https://example.com",
+    });
+
+    expect(message).toContain("処理: 投手成績 / 保存実行");
+    expect(message).toContain("⚠️重要な情報⚠️");
+    expect(message).toContain("投手成績の失点・自責点はシステムで概算しているため、必ず登板した選手が責任を持って目視で確認してください。");
+    expect(message).toContain("システムと山本は、この概算値の正確性について責任を持ちません。");
   });
 
   it("builds a compact error message with step and content", () => {
@@ -66,6 +88,23 @@ describe("jobNotification", () => {
     expect(message).toContain("工程: 保存を実行");
     expect(message).toContain("内容: 保存に失敗しました");
     expect(message).not.toContain("ジョブID");
+  });
+
+  it("adds an important manual verification notice to pitcher error messages", () => {
+    const job = {
+      ...createJobRecord(),
+      workflow: "pitcher" as const,
+    };
+    const message = buildJobFailedMessage(job, {
+      message: "保存に失敗しました",
+      step: "target.submit-form",
+      url: "https://example.com",
+      candidateCauses: [],
+    });
+
+    expect(message).toContain("処理: 投手成績 / 保存実行");
+    expect(message).toContain("⚠️重要な情報⚠️");
+    expect(message).toContain("システムと山本は、この概算値の正確性について責任を持ちません。");
   });
 
   it("builds a park lottery success message with failure details only for failed entries", () => {

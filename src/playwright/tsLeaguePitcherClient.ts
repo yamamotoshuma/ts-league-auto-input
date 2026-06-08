@@ -147,6 +147,9 @@ export async function inspectPitcherTargetForm(page: Page): Promise<PitcherTarge
       }
 
       const pitcherLabel = userSelect.selectedOptions[0]?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      const decisionSelect = form.querySelector(
+        `select[name="MemberScoreDfsyouhai[${pitcherIndex}]"]`,
+      ) as HTMLSelectElement | null;
       const statFields = Object.fromEntries(
         Object.entries(fieldNames).map(([field, baseName]) => {
           const name = `${baseName}[${pitcherIndex}]`;
@@ -196,6 +199,7 @@ export async function inspectPitcherTargetForm(page: Page): Promise<PitcherTarge
           currentLabel: pitcherLabel,
         },
         pitcherOptions: toSelectOptions(userSelect),
+        decisionOptions: toSelectOptions(decisionSelect),
         statFields,
       });
     }
@@ -312,6 +316,14 @@ export async function applyPitcherMapping(page: Page, mapping: PitcherMappingPre
       }
 
       await locator.fill(intendedValue);
+    }
+
+    if (assignment.decisionSelection?.control && assignment.decisionSelection.targetOptionValue !== null) {
+      const locator = await getControlLocator(page, assignment.decisionSelection.control);
+      const existingValue = await locator.inputValue().catch(() => "");
+      if (existingValue !== assignment.decisionSelection.targetOptionValue) {
+        await locator.selectOption(assignment.decisionSelection.targetOptionValue);
+      }
     }
   }
 }

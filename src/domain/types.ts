@@ -287,6 +287,18 @@ export interface PitcherSourceInningSummary {
   rawEvents: string[];
 }
 
+export type PitcherSourceBattingSide = "top" | "bottom";
+
+export interface PitcherSourceScoreboardRow {
+  battingSide: PitcherSourceBattingSide | null;
+  teamName: string;
+  runsByInning: Array<{
+    inning: number;
+    runs: number | null;
+  }>;
+  totalRuns: number | null;
+}
+
 export interface PitcherSourcePreview {
   sourceUrl: string;
   pageTitle: string;
@@ -295,6 +307,7 @@ export interface PitcherSourcePreview {
   scoreboardTableIndex: number | null;
   scoreboardHeaders: string[];
   opponentTeam: string | null;
+  scoreboardRows?: PitcherSourceScoreboardRow[];
   batterRows: PitcherSourceBatterRow[];
   innings: PitcherSourceInningSummary[];
   warnings: string[];
@@ -324,6 +337,7 @@ export interface PitcherTargetRow {
   selectedUserId: string | null;
   pitcherControl: TargetControlRef | null;
   pitcherOptions: TargetSelectOption[];
+  decisionOptions?: TargetSelectOption[];
   statFields: Partial<Record<PitcherStatField, TargetControlRef>>;
 }
 
@@ -350,6 +364,7 @@ export interface PitcherTargetFormPreview {
 export interface PitcherDerivedStatLine {
   innings: number;
   outs: number;
+  decision: "win" | "loss" | null;
   earnedRuns: number | null;
   runsAllowed: number | null;
   strikeouts: number | null;
@@ -370,6 +385,7 @@ export interface PitcherMappingAssignment {
   targetRowIndex: number | null;
   confidence: MatchConfidence;
   playerSelection: TargetOptionAssignment | null;
+  decisionSelection: TargetOptionAssignment | null;
   statAssignments: Partial<Record<PitcherStatField, TargetControlRef>>;
   derivedStats: PitcherDerivedStatLine;
   warnings: string[];

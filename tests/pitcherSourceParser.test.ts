@@ -167,6 +167,18 @@ describe("buildPitcherSourcePreview", () => {
         strikeouts: 1,
       }),
     ]);
+    expect(preview.scoreboardRows).toEqual([
+      expect.objectContaining({
+        battingSide: "top",
+        teamName: "ORDERMADE",
+        totalRuns: 0,
+      }),
+      expect.objectContaining({
+        battingSide: "bottom",
+        teamName: "Re",
+        totalRuns: 3,
+      }),
+    ]);
     expect(preview.warnings).toHaveLength(0);
   });
 
@@ -176,6 +188,15 @@ describe("buildPitcherSourcePreview", () => {
     expect(preview.selectedTableIndex).toBe(5);
     expect(preview.scoreboardTableIndex).toBe(5);
     expect(preview.batterRows.map((row) => row.playerName)).toEqual(["SO-TA", "TAKAHASHI"]);
+    expect(preview.scoreboardRows?.map((row) => ({
+      side: row.battingSide,
+      team: row.teamName,
+      total: row.totalRuns,
+      innings: row.runsByInning.map((inning) => inning.runs),
+    }))).toEqual([
+      { side: "top", team: "ORDERMADE BASEBALL CLUB", total: 3, innings: [0, 0, 3] },
+      { side: "bottom", team: "Re", total: 6, innings: [0, 1, 2] },
+    ]);
     expect(preview.innings).toEqual([
       expect.objectContaining({
         inning: 1,

@@ -1,8 +1,10 @@
 import type {
   PitcherSourceBatterRow,
+  PitcherSourceBattingSide,
   PitcherSourceInningResult,
   PitcherSourceInningSummary,
   PitcherSourcePreview,
+  PitcherSourceScoreboardRow,
   RawTable,
   TableSnapshot,
 } from "./types";
@@ -25,6 +27,10 @@ const COMPACT_EVENT_PATTERNS = [
   /^敬遠(?:\(\d+\))?/,
   /^四球(?:\(\d+\))?/,
   /^死球(?:\(\d+\))?/,
+  /^暴投(?:\(\d+\))?/,
+  /^捕逸(?:\(\d+\))?/,
+  /^パスボール(?:\(\d+\))?/,
+  /^ボーク(?:\(\d+\))?/,
   /^本塁打(?:\(\d+\))?/,
   /^三塁打(?:\(\d+\))?/,
   /^二塁打(?:\(\d+\))?/,
@@ -366,6 +372,46 @@ function parseRunsFromSummaryRow(values: string[]): Map<number, number | null> {
   return inningRuns;
 }
 
+function parseBattingSide(value: string): PitcherSourceBattingSide | null {
+  const normalized = normalizeText(value);
+  if (normalized === "先攻") {
+    return "top";
+  }
+
+  if (normalized === "後攻") {
+    return "bottom";
+  }
+
+  return null;
+}
+
+function parseTotalRuns(value: string): number | null {
+  return parseInteger(value);
+}
+
+function buildScoreboardRowsFromCombinedScoreRows(scoreRows: string[][]): PitcherSourceScoreboardRow[] {
+  return scoreRows.flatMap((values, index) => {
+    const teamName = normalizeText(values[2] ?? "");
+    if (!teamName) {
+      return [];
+    }
+
+    const runsByInning = Array.from(parseRunsFromSummaryRow(values).entries()).map(([inning, runs]) => ({
+      inning,
+      runs,
+    }));
+
+    return [
+      {
+        battingSide: parseBattingSide(values[0] ?? "") ?? (index === 0 ? "top" : index === 1 ? "bottom" : null),
+        teamName,
+        runsByInning,
+        totalRuns: parseTotalRuns(values[3] ?? ""),
+      },
+    ];
+  });
+}
+
 function parseBattingRowsFromValues(headers: string[], rows: string[][]): PitcherSourceBatterRow[] {
   const inningColumns = extractInningColumns(headers);
   const orderIndex = findHeaderIndex(headers, BATTER_HEADER_ALIASES.battingOrder);
@@ -409,11 +455,13 @@ function parseCombinedBattingTable(
 ): {
   batterRows: PitcherSourceBatterRow[];
   runsByInning: Map<number, number | null>;
+  scoreboardRows: PitcherSourceScoreboardRow[];
   scoreboardHeaders: string[];
 } | null {
   const rows = table.rows.map((row) => row.cells.map((cell) => normalizeText(cell.text)));
   const teamNames: string[] = [];
   const runsByTeam = new Map<string, Map<number, number | null>>();
+  const scoreRows: string[][] = [];
   const blocks: Array<{ headers: string[]; rows: string[][] }> = [];
   let currentHeaders = table.headers.map((header) => normalizeText(header));
   let currentRows: string[][] = [];
@@ -437,6 +485,7 @@ function parseCombinedBattingTable(
       const teamName = normalizeText(values[2] ?? "");
       if (teamName !== "") {
         teamNames.push(teamName);
+        scoreRows.push(values);
         runsByTeam.set(normalizeLooseKey(teamName), parseRunsFromSummaryRow(values));
       }
       continue;
@@ -478,8 +527,39 @@ function parseCombinedBattingTable(
       selected.teamName && runsByTeam.has(normalizeLooseKey(selected.teamName))
         ? runsByTeam.get(normalizeLooseKey(selected.teamName)) ?? new Map<number, number | null>()
         : new Map<number, number | null>(),
+    scoreboardRows: buildScoreboardRowsFromCombinedScoreRows(scoreRows),
     scoreboardHeaders: selected.block.headers.filter((header) => /^(\d+)(?:回)?$/.test(normalizeText(header))),
   };
+}
+
+function parseScoreboardRows(table: RawTable): PitcherSourceScoreboardRow[] {
+  const inningColumns = extractInningColumns(table.headers);
+  if (inningColumns.length === 0) {
+    return [];
+  }
+
+  return table.rows.flatMap((row, index) => {
+    const values = row.cells.map((cell) => normalizeText(cell.text));
+    const teamName = normalizeText(values[0] ?? "");
+    if (!teamName) {
+      return [];
+    }
+
+    const runsByInning = inningColumns.map((column) => ({
+      inning: column.inning,
+      runs: parseInteger(values[column.index] ?? ""),
+    }));
+    const totalIndex = table.headers.findIndex((header) => /^(計|合計|R|得点)$/i.test(normalizeText(header)));
+
+    return [
+      {
+        battingSide: index === 0 ? "top" : index === 1 ? "bottom" : null,
+        teamName,
+        runsByInning,
+        totalRuns: totalIndex >= 0 ? parseTotalRuns(values[totalIndex] ?? "") : runsByInning.reduce((sum, item) => sum + (item.runs ?? 0), 0),
+      },
+    ];
+  });
 }
 
 function parseScoreboardRuns(table: RawTable, targetOpponent: string | null): Map<number, number | null> {
@@ -576,6 +656,12 @@ export function buildPitcherSourcePreview(snapshot: TableSnapshot, targetOpponen
       : scoreboardTable
         ? parseScoreboardRuns(scoreboardTable, targetOpponent)
         : new Map<number, number | null>();
+  const scoreboardRows =
+    combined?.scoreboardRows && combined.scoreboardRows.length > 0
+      ? combined.scoreboardRows
+      : scoreboardTable
+        ? parseScoreboardRows(scoreboardTable)
+        : [];
   const innings = summarizeInnings(batterRows, runsByInning);
 
   if (selectedTable && batterRows.length === 0) {
@@ -590,6 +676,7 @@ export function buildPitcherSourcePreview(snapshot: TableSnapshot, targetOpponen
       scoreboardTableIndex: combined?.runsByInning.size ? selectedTable?.tableIndex ?? null : scoreboardTable?.tableIndex ?? null,
       scoreboardHeaders: combined?.scoreboardHeaders ?? scoreboardTable?.headers ?? [],
       opponentTeam: targetOpponent,
+      scoreboardRows,
       batterRows,
       innings,
     warnings,

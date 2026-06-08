@@ -196,16 +196,16 @@ Observed public-page nuance:
 | `MemberScoreDfUserId[ROW]` | Manual UI input `pitcherName` | Resolve against target select options and fill when the row is blank |
 | `MemberScoreDfIning[ROW]` | Manual UI input `innings` | Fill directly |
 | `MemberScoreDfKaisu[ROW]` | Manual UI input `outs` | Fill directly |
-| `MemberScoreDfSiten[ROW]` | Sum opponent runs by inning from the public score table | Fill only when inning-level runs can be read safely |
+| `MemberScoreDfSiten[ROW]` | Sum opponent runs by inning from the public score table; for partial innings, use explicit event run markers first and allocate remaining scoreboard runs by hit/walk/extra-base risk | Fill with exact value when available, otherwise fill an estimated value with warnings |
 | `MemberScoreDfDatusansin[ROW]` | Count opponent batting events containing `三振` / `振逃` in covered innings | Fill automatically |
 | `MemberScoreDfSikyu[ROW]` | Count opponent batting events containing `四球` / `敬遠` in covered innings | Fill automatically |
 | `MemberScoreDfSisikyu[ROW]` | Count opponent batting events containing `死球` in covered innings | Fill automatically |
 | `MemberScoreDfHianda[ROW]` | Count opponent batting events classified as hits in covered innings | Fill automatically |
 | `MemberScoreDfHiHr[ROW]` | Count opponent batting events classified as home runs in covered innings | Fill automatically |
-| `MemberScoreDfJiseki[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
+| `MemberScoreDfJiseki[ROW]` | Estimate from opponent batting events by reconstructing the inning without errors, passed balls, or interference; clamp to the assigned runs allowed | Fill with an estimated value and warn that pitchers must verify manually |
 | `MemberScoreDfBoutou[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
 | `MemberScoreDfBok[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
-| `MemberScoreDfsyouhai[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
+| `MemberScoreDfsyouhai[ROW]` | Estimate from both-team scoreboard lead changes and pitcher allocation. Follow TS-League/Skytree League responsibility innings: starter responsibility is 3 innings, but if the completed game is 4 innings or fewer, responsibility is half-or-more innings rounded up. If the starter does not satisfy this, choose a reliever by effectiveness. Losing pitcher uses the pitcher responsible for the final go-ahead run. | Fill `勝` or `敗` when the target select option can be resolved |
 | `MemberScoreDfKantou[ROW]` | Not derivable safely from public batting detail alone | Leave untouched |
 
 ### Pitcher event classification rules
@@ -213,6 +213,8 @@ Observed public-page nuance:
 - `四球`, `敬遠` => walk
 - `死球` => hit by pitch
 - `三振`, `空三振`, `見三振`, `振逃` => strikeout
+- `暴投`, `ボーク` => pitcher-responsibility risk when estimating runs
+- `捕逸`, `パスボール`, `敵失`, `エラー`, `妨害` => unearned-risk events when estimating earned runs
 - `安打`, `内安`, `投安`, `捕安`, `一安`, `ニ安`, `三安`, `遊安`, `左安`, `中安`, `右安`, `安２`, `安３`, `本塁打`, `左本`, `中本`, `右本` => hit
 - Home-run labels count as both:
   - hit

@@ -511,4 +511,4 @@ The application should save the following under `artifacts/` per job:
 3. Is row 10 in `bcount=10` a substitute slot that must be normalized for all games?
 4. Can existing entered batter stats be safely detected before overwrite in cases where some slots are already non-zero?
 5. Can partial-inning pitcher changes be reconstructed safely enough for automatic stat splitting?
-6. Are `自責`, `暴投`, `ボーク`, `勝敗`, and `完投系` ever derivable from public batting detail alone, or must they remain manual?
+6. Are `暴投`, `ボーク`, and `完投系` ever derivable from public batting detail alone, or must they remain manual? `自責` and `勝敗` are now estimated, but must still be manually verified.

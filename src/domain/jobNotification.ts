@@ -21,6 +21,12 @@ const STEP_LABELS: Record<string, string> = {
   "notify.line": "LINE通知",
 };
 
+const PITCHER_ESTIMATION_NOTICE_LINES = [
+  "⚠️重要な情報⚠️",
+  "投手成績の失点・自責点はシステムで概算しているため、必ず登板した選手が責任を持って目視で確認してください。",
+  "システムと山本は、この概算値の正確性について責任を持ちません。",
+];
+
 function formatDate(value: string | null): string {
   if (!value) {
     return "未指定";
@@ -49,6 +55,10 @@ function stepLabel(value: string | null | undefined): string {
 function workflowLabel(job: JobRecord): string {
   const workflow = job.workflow ?? "batter";
   return workflow === "pitcher" ? "投手成績" : workflow === "park-lottery" ? "都立公園抽選" : "野手成績";
+}
+
+function buildImportantNoticeLines(job: JobRecord): string[] {
+  return job.workflow === "pitcher" ? PITCHER_ESTIMATION_NOTICE_LINES : [];
 }
 
 function buildSummaryLines(job: JobRecord): string[] {
@@ -123,6 +133,7 @@ export function buildJobSucceededMessage(job: JobRecord, resultSummary: JobResul
   return [
     "【TS-League自動反映】完了",
     ...buildSummaryLines(job),
+    ...buildImportantNoticeLines(job),
     `結果: 対応 ${resultSummary?.matchedPlayers ?? "-"} / 取得 ${resultSummary?.sourcePlayerCount ?? "-"}`,
     `未対応: ${resultSummary?.unmappedPlayers ?? "-"}`,
     `保存確認: ${resultSummary?.saved ? "済み" : "なし"}`,
@@ -147,6 +158,7 @@ export function buildJobFailedMessage(job: JobRecord, errorSummary: JobErrorSumm
   return [
     "【TS-League自動反映】エラー",
     ...buildSummaryLines(job),
+    ...buildImportantNoticeLines(job),
     `工程: ${stepLabel(errorSummary?.step)}`,
     `内容: ${errorSummary?.message ?? "不明"}`,
   ].join("\n");

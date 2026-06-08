@@ -25,6 +25,15 @@ function control(name: string, rowIndex: number, currentValue = ""): TargetContr
   };
 }
 
+function selectControl(name: string, rowIndex: number, currentValue = "0", currentLabel = "-"): TargetControlRef {
+  return {
+    ...control(name, rowIndex, currentValue),
+    tagName: "select",
+    type: "select-one",
+    currentLabel,
+  };
+}
+
 function pitcherRow(index: number, options: TargetSelectOption[]): PitcherTargetRow {
   return {
     formIndex: 0,
@@ -48,6 +57,11 @@ function pitcherRow(index: number, options: TargetSelectOption[]): PitcherTarget
       currentLabel: "-",
     },
     pitcherOptions: options,
+    decisionOptions: [
+      { value: "0", label: "-", normalizedLabel: "-" },
+      { value: "1", label: "勝", normalizedLabel: "勝" },
+      { value: "2", label: "敗", normalizedLabel: "敗" },
+    ],
     statFields: {
       innings: control(`MemberScoreDfIning[${index}]`, index),
       outs: control(`MemberScoreDfKaisu[${index}]`, index),
@@ -58,6 +72,7 @@ function pitcherRow(index: number, options: TargetSelectOption[]): PitcherTarget
       hitByPitch: control(`MemberScoreDfSisikyu[${index}]`, index),
       hitsAllowed: control(`MemberScoreDfHianda[${index}]`, index),
       homeRunsAllowed: control(`MemberScoreDfHiHr[${index}]`, index),
+      decision: selectControl(`MemberScoreDfsyouhai[${index}]`, index),
     },
   };
 }
@@ -238,6 +253,83 @@ function buildEarnedRunAdjustmentSourcePreview(): PitcherSourcePreview {
   };
 }
 
+function buildTwoOutErrorBeforeHomerSourcePreview(): PitcherSourcePreview {
+  return {
+    sourceUrl: "https://ts-league.com/game/2026/index.php?gameid=99995",
+    pageTitle: "試合結果",
+    selectedTableIndex: 1,
+    selectedHeaders: ["打順", "選手", "1回"],
+    scoreboardTableIndex: 0,
+    scoreboardHeaders: ["チーム", "1回"],
+    opponentTeam: "Re",
+    batterRows: [
+      { battingOrder: 1, playerName: "打者1", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+      { battingOrder: 2, playerName: "打者2", inningResults: [{ inning: 1, rawText: "遊ゴロ", events: ["遊ゴロ"] }] },
+      { battingOrder: 3, playerName: "打者3", inningResults: [{ inning: 1, rawText: "遊失", events: ["遊失"] }] },
+      { battingOrder: 4, playerName: "打者4", inningResults: [{ inning: 1, rawText: "本塁打(2)", events: ["本塁打(2)"] }] },
+      { battingOrder: 5, playerName: "打者5", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+    ],
+    innings: [
+      {
+        inning: 1,
+        runsAllowed: 2,
+        hitsAllowed: 1,
+        homeRunsAllowed: 1,
+        strikeouts: 2,
+        walks: 0,
+        hitByPitch: 0,
+        eventCount: 5,
+        rawEvents: ["打者1: 三振", "打者2: 遊ゴロ", "打者3: 遊失", "打者4: 本塁打(2)", "打者5: 三振"],
+      },
+    ],
+    warnings: [],
+  };
+}
+
+function buildDecisionSourcePreview(params: {
+  ownRuns: number[];
+  opponentRuns: number[];
+}): PitcherSourcePreview {
+  const innings = params.opponentRuns.map((runsAllowed, index) => ({
+    inning: index + 1,
+    runsAllowed,
+    hitsAllowed: runsAllowed > 0 ? 1 : 0,
+    homeRunsAllowed: 0,
+    strikeouts: 0,
+    walks: 0,
+    hitByPitch: 0,
+    eventCount: 0,
+    rawEvents: [],
+  }));
+
+  return {
+    sourceUrl: "https://ts-league.com/game/2026/index.php?gameid=99994",
+    pageTitle: "試合結果",
+    selectedTableIndex: 1,
+    selectedHeaders: ["打順", "選手", "1回", "2回", "3回", "4回", "5回", "6回"],
+    scoreboardTableIndex: 0,
+    scoreboardHeaders: ["チーム", "1回", "2回", "3回", "4回", "5回", "6回"],
+    opponentTeam: "Re",
+    scoreboardRows: [
+      {
+        battingSide: "top",
+        teamName: "ORDERMADE BASEBALL CLUB",
+        runsByInning: params.ownRuns.map((runs, index) => ({ inning: index + 1, runs })),
+        totalRuns: params.ownRuns.reduce((sum, runs) => sum + runs, 0),
+      },
+      {
+        battingSide: "bottom",
+        teamName: "Re",
+        runsByInning: params.opponentRuns.map((runs, index) => ({ inning: index + 1, runs })),
+        totalRuns: params.opponentRuns.reduce((sum, runs) => sum + runs, 0),
+      },
+    ],
+    batterRows: [],
+    innings,
+    warnings: [],
+  };
+}
+
 describe("buildPitcherMappingPreview", () => {
   it("maps empty target rows in input order and derives per-pitcher totals", () => {
     const allocations: PitcherAllocation[] = [
@@ -318,7 +410,7 @@ describe("buildPitcherMappingPreview", () => {
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 
-  it("keeps commit-ready when only runs allowed cannot be attributed safely", () => {
+  it("keeps commit-ready and estimates runs allowed when exact partial-inning attribution is unavailable", () => {
     const allocations: PitcherAllocation[] = [
       { order: 1, rawText: "安楽 2/3", pitcherName: "安楽", innings: 0, outs: 2 },
       { order: 2, rawText: "藤田 1/3", pitcherName: "藤田", innings: 0, outs: 1 },
@@ -329,8 +421,9 @@ describe("buildPitcherMappingPreview", () => {
       pitcherRows: [pitcherRow(1, options), pitcherRow(2, options)],
     });
 
-    expect(mapping.assignments[0].derivedStats.runsAllowed).toBeNull();
-    expect(mapping.assignments[0].warnings).toContain("1回の部分イニング失点配分を公開ページから特定できません");
+    expect(mapping.assignments[0].derivedStats.runsAllowed).toBe(1);
+    expect(mapping.assignments[0].derivedStats.earnedRuns).toBe(1);
+    expect(mapping.assignments[0].warnings).toContain("1回の部分イニング失点配分をスコアボードと打撃イベントから概算しました");
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 
@@ -436,6 +529,129 @@ describe("buildPitcherMappingPreview", () => {
         homeRunsAllowed: 1,
       },
     });
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
+  it("does not charge earned runs after a two-out error should have ended the reconstructed inning", () => {
+    const allocations: PitcherAllocation[] = [
+      { order: 1, rawText: "安楽 1回", pitcherName: "安楽", innings: 1, outs: 0 },
+    ];
+
+    const mapping = buildPitcherMappingPreview(allocations, buildTwoOutErrorBeforeHomerSourcePreview(), {
+      ...targetPreview,
+      pitcherRows: [pitcherRow(1, options)],
+    });
+
+    expect(mapping.assignments[0]).toMatchObject({
+      derivedStats: {
+        innings: 1,
+        outs: 0,
+        earnedRuns: 0,
+        runsAllowed: 2,
+        strikeouts: 2,
+        walks: 0,
+        hitByPitch: 0,
+        hitsAllowed: 1,
+        homeRunsAllowed: 1,
+      },
+    });
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
+  it("assigns the win decision to a starter who satisfies the Skytree League 3-inning responsibility rule", () => {
+    const allocations: PitcherAllocation[] = [
+      { order: 1, rawText: "安楽 3回", pitcherName: "安楽", innings: 3, outs: 0 },
+      { order: 2, rawText: "藤田 3回", pitcherName: "藤田", innings: 3, outs: 0 },
+    ];
+
+    const mapping = buildPitcherMappingPreview(
+      allocations,
+      buildDecisionSourcePreview({
+        ownRuns: [0, 0, 4, 0, 0, 0],
+        opponentRuns: [0, 0, 1, 0, 0, 0],
+      }),
+      {
+        ...targetPreview,
+        pitcherRows: [pitcherRow(1, options), pitcherRow(2, options)],
+      },
+    );
+
+    expect(mapping.assignments[0].derivedStats.decision).toBe("win");
+    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("勝");
+    expect(mapping.assignments[1].derivedStats.decision).toBeNull();
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
+  it("falls back to a reliever when the starter does not satisfy the Skytree League responsibility rule", () => {
+    const allocations: PitcherAllocation[] = [
+      { order: 1, rawText: "安楽 2回", pitcherName: "安楽", innings: 2, outs: 0 },
+      { order: 2, rawText: "藤田 4回", pitcherName: "藤田", innings: 4, outs: 0 },
+    ];
+
+    const mapping = buildPitcherMappingPreview(
+      allocations,
+      buildDecisionSourcePreview({
+        ownRuns: [0, 4, 0, 0, 0, 0],
+        opponentRuns: [0, 1, 0, 0, 0, 0],
+      }),
+      {
+        ...targetPreview,
+        pitcherRows: [pitcherRow(1, options), pitcherRow(2, options)],
+      },
+    );
+
+    expect(mapping.assignments[0].derivedStats.decision).toBeNull();
+    expect(mapping.assignments[1].derivedStats.decision).toBe("win");
+    expect(mapping.assignments[1].decisionSelection?.targetOptionLabel).toBe("勝");
+    expect(mapping.warnings).toContain("藤田: 先発投手がスカイツリーグの責任投球回を満たさないため、救援投手から勝利投手を概算しました");
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
+  it("uses half-or-more innings rounded up for a four-inning Skytree League game", () => {
+    const allocations: PitcherAllocation[] = [
+      { order: 1, rawText: "安楽 2回", pitcherName: "安楽", innings: 2, outs: 0 },
+      { order: 2, rawText: "藤田 2回", pitcherName: "藤田", innings: 2, outs: 0 },
+    ];
+
+    const mapping = buildPitcherMappingPreview(
+      allocations,
+      buildDecisionSourcePreview({
+        ownRuns: [0, 3, 0, 0],
+        opponentRuns: [0, 1, 0, 0],
+      }),
+      {
+        ...targetPreview,
+        pitcherRows: [pitcherRow(1, options), pitcherRow(2, options)],
+      },
+    );
+
+    expect(mapping.assignments[0].derivedStats.decision).toBe("win");
+    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("勝");
+    expect(mapping.assignments[1].derivedStats.decision).toBeNull();
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
+  it("assigns the loss decision to the pitcher who allowed the final go-ahead inning", () => {
+    const allocations: PitcherAllocation[] = [
+      { order: 1, rawText: "安楽 3回", pitcherName: "安楽", innings: 3, outs: 0 },
+      { order: 2, rawText: "藤田 3回", pitcherName: "藤田", innings: 3, outs: 0 },
+    ];
+
+    const mapping = buildPitcherMappingPreview(
+      allocations,
+      buildDecisionSourcePreview({
+        ownRuns: [1, 0, 0, 0, 0, 0],
+        opponentRuns: [0, 2, 0, 0, 0, 0],
+      }),
+      {
+        ...targetPreview,
+        pitcherRows: [pitcherRow(1, options), pitcherRow(2, options)],
+      },
+    );
+
+    expect(mapping.assignments[0].derivedStats.decision).toBe("loss");
+    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("敗");
+    expect(mapping.assignments[1].derivedStats.decision).toBeNull();
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 
