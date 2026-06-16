@@ -14,9 +14,10 @@ import {
   buildJobSucceededMessage,
 } from "../domain/jobNotification";
 import { ArtifactStore } from "../infra/artifactStore";
+import { DiscordNotifier } from "../infra/discordNotifier";
 import { LineNotifier } from "../infra/lineNotifier";
 import { DuplicateActiveJobError, JsonJobStore, JobNotFoundError } from "../infra/jsonJobStore";
-import { loadLineNotificationSecrets, loadSecrets, SecretsError } from "../infra/secrets";
+import { loadDiscordNotificationSecrets, loadLineNotificationSecrets, loadSecrets, SecretsError } from "../infra/secrets";
 import { PlaywrightJobRunner } from "../playwright/jobRunner";
 import { makeDedupeKey } from "../utils/url";
 
@@ -207,29 +208,57 @@ export class JobQueue {
     }
   }
 
-  private async sendLineNotification(
-    jobId: string,
-    phase: "succeeded" | "failed",
-    job: JobRecord,
-  ): Promise<void> {
-    const notifier = await this.loadLineNotifier(jobId);
-    if (!notifier) {
-      return;
-    }
-
-    const message =
-      phase === "succeeded" ? buildJobSucceededMessage(job, job.resultSummary) : buildJobFailedMessage(job, job.errorSummary);
-
+  private async loadDiscordNotifier(jobId: string): Promise<DiscordNotifier | null> {
     try {
-      await notifier.send(message);
-      await this.appendLog(jobId, "info", "notify.line", `LINE 通知を送信しました (${phase})`);
+      const secrets = await loadDiscordNotificationSecrets(this.projectRoot);
+      return secrets ? new DiscordNotifier(secrets) : null;
     } catch (error) {
       await this.appendLog(
         jobId,
         "warn",
-        "notify.line",
-        error instanceof Error ? error.message : "LINE 通知の送信に失敗しました",
+        "notify.discord",
+        error instanceof Error ? error.message : "Discord 通知設定の読み込みに失敗しました",
       );
+      return null;
+    }
+  }
+
+  private async sendNotifications(
+    jobId: string,
+    phase: "succeeded" | "failed",
+    job: JobRecord,
+  ): Promise<void> {
+    const message =
+      phase === "succeeded" ? buildJobSucceededMessage(job, job.resultSummary) : buildJobFailedMessage(job, job.errorSummary);
+
+    const lineNotifier = await this.loadLineNotifier(jobId);
+    if (lineNotifier) {
+      try {
+        await lineNotifier.send(message);
+        await this.appendLog(jobId, "info", "notify.line", `LINE 通知を送信しました (${phase})`);
+      } catch (error) {
+        await this.appendLog(
+          jobId,
+          "warn",
+          "notify.line",
+          error instanceof Error ? error.message : "LINE 通知の送信に失敗しました",
+        );
+      }
+    }
+
+    const discordNotifier = await this.loadDiscordNotifier(jobId);
+    if (discordNotifier) {
+      try {
+        await discordNotifier.send(message);
+        await this.appendLog(jobId, "info", "notify.discord", `Discord 通知を送信しました (${phase})`);
+      } catch (error) {
+        await this.appendLog(
+          jobId,
+          "warn",
+          "notify.discord",
+          error instanceof Error ? error.message : "Discord 通知の送信に失敗しました",
+        );
+      }
     }
   }
 
@@ -333,7 +362,7 @@ export class JobQueue {
       }));
       const succeededJob = await this.store.get(jobId);
       if (succeededJob) {
-        await this.sendLineNotification(jobId, "succeeded", succeededJob);
+        await this.sendNotifications(jobId, "succeeded", succeededJob);
       }
     } catch (error) {
       await this.failJob(jobId, error, await this.store.get(jobId));
@@ -364,7 +393,7 @@ export class JobQueue {
 
     const failedJob = await this.store.get(jobId);
     if (failedJob) {
-      await this.sendLineNotification(jobId, "failed", failedJob);
+      await this.sendNotifications(jobId, "failed", failedJob);
     }
   }
 }

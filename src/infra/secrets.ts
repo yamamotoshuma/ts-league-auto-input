@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   AppSecrets,
+  DiscordNotificationSecrets,
   LineNotificationSecrets,
   OrderMadeSecrets,
   TokyoParkAccountSecrets,
@@ -69,8 +70,42 @@ export async function loadLineNotificationSecrets(projectRoot: string): Promise<
     return null;
   }
 
+  const notifications = (raw.notifications ?? raw) as Record<string, unknown>;
+  const hasLineConfig =
+    typeof notifications.line === "object" ||
+    "apiUrl" in notifications ||
+    "accessToken" in notifications ||
+    "recipientId" in notifications;
+  if (!hasLineConfig) {
+    return null;
+  }
+
   const secrets = validateLineNotificationSecrets(raw);
   if (secrets.accessToken === "SET_LOCALLY" || secrets.recipientId === "SET_LOCALLY") {
+    return null;
+  }
+
+  return secrets;
+}
+
+export async function loadDiscordNotificationSecrets(projectRoot: string): Promise<DiscordNotificationSecrets | null> {
+  const notificationPath = join(projectRoot, "secrets", "notifications.local.json");
+
+  let raw: Record<string, unknown>;
+  try {
+    raw = await readJsonFile<Record<string, unknown>>(notificationPath);
+  } catch {
+    return null;
+  }
+
+  const notifications = (raw.notifications ?? raw) as Record<string, unknown>;
+  const discord = notifications.discord;
+  if (!discord || typeof discord !== "object") {
+    return null;
+  }
+
+  const secrets = validateDiscordNotificationSecrets(raw);
+  if (secrets.webhookUrl === "SET_LOCALLY") {
     return null;
   }
 
@@ -184,6 +219,15 @@ function validateLineNotificationSecrets(input: Record<string, unknown>): LineNo
     apiUrl,
     accessToken: assertString(line.accessToken, "line.accessToken", "notifications.local.json"),
     recipientId: assertString(line.recipientId, "line.recipientId", "notifications.local.json"),
+  };
+}
+
+function validateDiscordNotificationSecrets(input: Record<string, unknown>): DiscordNotificationSecrets {
+  const notifications = (input.notifications ?? input) as Record<string, unknown>;
+  const discord = notifications.discord as Record<string, unknown>;
+
+  return {
+    webhookUrl: assertString(discord.webhookUrl, "discord.webhookUrl", "notifications.local.json"),
   };
 }
 

@@ -494,6 +494,10 @@ export interface LineNotificationSecrets {
   recipientId: string;
 }
 
+export interface DiscordNotificationSecrets {
+  webhookUrl: string;
+}
+
 export interface WebAppAuthSecrets {
   username: string;
   password: string;
