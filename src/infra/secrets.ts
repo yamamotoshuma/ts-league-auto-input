@@ -3,7 +3,6 @@ import { join } from "node:path";
 import type {
   AppSecrets,
   DiscordNotificationSecrets,
-  LineNotificationSecrets,
   OrderMadeSecrets,
   TokyoParkAccountSecrets,
   TokyoParksSecrets,
@@ -58,34 +57,6 @@ export async function loadSecrets(projectRoot: string): Promise<AppSecrets> {
 export async function loadTokyoParksSecrets(projectRoot: string): Promise<TokyoParksSecrets | null> {
   const tokyoParksPath = join(projectRoot, "secrets", "tokyo_parks.local.json");
   return loadOptionalTokyoParksSecrets(tokyoParksPath);
-}
-
-export async function loadLineNotificationSecrets(projectRoot: string): Promise<LineNotificationSecrets | null> {
-  const notificationPath = join(projectRoot, "secrets", "notifications.local.json");
-
-  let raw: Record<string, unknown>;
-  try {
-    raw = await readJsonFile<Record<string, unknown>>(notificationPath);
-  } catch {
-    return null;
-  }
-
-  const notifications = (raw.notifications ?? raw) as Record<string, unknown>;
-  const hasLineConfig =
-    typeof notifications.line === "object" ||
-    "apiUrl" in notifications ||
-    "accessToken" in notifications ||
-    "recipientId" in notifications;
-  if (!hasLineConfig) {
-    return null;
-  }
-
-  const secrets = validateLineNotificationSecrets(raw);
-  if (secrets.accessToken === "SET_LOCALLY" || secrets.recipientId === "SET_LOCALLY") {
-    return null;
-  }
-
-  return secrets;
 }
 
 export async function loadDiscordNotificationSecrets(projectRoot: string): Promise<DiscordNotificationSecrets | null> {
@@ -203,22 +174,6 @@ function validateTokyoParkAccountSecrets(
     userId: assertString(input.userId, `${fileLabel}.userId`, fileLabel),
     password: assertString(input.password, `${fileLabel}.password`, fileLabel),
     enabled: typeof input.enabled === "boolean" ? input.enabled : true,
-  };
-}
-
-function validateLineNotificationSecrets(input: Record<string, unknown>): LineNotificationSecrets {
-  const notifications = (input.notifications ?? input) as Record<string, unknown>;
-  const line = (notifications.line ?? notifications) as Record<string, unknown>;
-
-  const apiUrl =
-    typeof line.apiUrl === "string" && line.apiUrl.trim() !== ""
-      ? line.apiUrl
-      : "https://api.line.me/v2/bot/message/push";
-
-  return {
-    apiUrl,
-    accessToken: assertString(line.accessToken, "line.accessToken", "notifications.local.json"),
-    recipientId: assertString(line.recipientId, "line.recipientId", "notifications.local.json"),
   };
 }
 

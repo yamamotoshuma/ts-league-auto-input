@@ -18,7 +18,6 @@ const STEP_LABELS: Record<string, string> = {
   "park.entry.prepare": "抽選内容を確認",
   "park.entry.submit": "抽選申込みを送信",
   "park.logout": "ログアウト",
-  "notify.line": "LINE通知",
   "notify.discord": "Discord通知",
 };
 

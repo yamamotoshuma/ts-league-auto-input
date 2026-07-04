@@ -162,7 +162,7 @@ journalctl -u ts-league-auto-input -n 200 --no-pager
 - `secrets/notifications.local.json`
 - `secrets/tokyo_parks.local.json`
 
-`secrets/notifications.local.json` は任意です。設定すると LINE Bot push 通知を送ります。
+`secrets/notifications.local.json` は任意です。設定すると Discord webhook 通知を送ります。
 
 `secrets/tokyo_parks.local.json` はグラウンド抽選を使うときに必要です。
 
@@ -184,10 +184,8 @@ journalctl -u ts-league-auto-input -n 200 --no-pager
 
 ```json
 {
-  "line": {
-    "apiUrl": "https://api.line.me/v2/bot/message/push",
-    "accessToken": "SET_LOCALLY",
-    "recipientId": "SET_LOCALLY"
+  "discord": {
+    "webhookUrl": "SET_LOCALLY"
   }
 }
 ```

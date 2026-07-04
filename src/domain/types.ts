@@ -488,12 +488,6 @@ export interface TokyoParksSecrets {
   accounts: TokyoParkAccountSecrets[];
 }
 
-export interface LineNotificationSecrets {
-  apiUrl: string;
-  accessToken: string;
-  recipientId: string;
-}
-
 export interface DiscordNotificationSecrets {
   webhookUrl: string;
 }
