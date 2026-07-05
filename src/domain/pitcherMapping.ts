@@ -227,10 +227,10 @@ function optionMatchesDecision(option: TargetSelectOption, decision: PitcherDeci
   }
 
   if (decision === "win") {
-    return ["勝", "勝利", "勝投手", "勝利投手", "W"].includes(label);
+    return ["勝", "勝ち", "勝利", "勝投手", "勝利投手", "W"].includes(label);
   }
 
-  return ["敗", "敗戦", "敗投手", "敗戦投手", "L"].includes(label);
+  return ["敗", "負け", "敗戦", "敗投手", "敗戦投手", "L"].includes(label);
 }
 
 function resolveDecisionSelection(
@@ -816,9 +816,14 @@ function estimateEarnedRunsForInning(
 
 function buildOrderedSourceEvents(source: PitcherSourcePreview): SourceEvent[] {
   const grouped = new Map<number, Array<{ battingOrder: number; rowIndex: number; playerName: string; events: string[] }>>();
+  const playedInnings = getPlayedInnings(source);
 
   source.batterRows.forEach((row, rowIndex) => {
     row.inningResults.forEach((inningResult) => {
+      if (playedInnings > 0 && inningResult.inning > playedInnings) {
+        return;
+      }
+
       const current = grouped.get(inningResult.inning) ?? [];
       current.push({
         battingOrder: row.battingOrder ?? Number.MAX_SAFE_INTEGER,

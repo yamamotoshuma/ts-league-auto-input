@@ -59,8 +59,9 @@ function pitcherRow(index: number, options: TargetSelectOption[]): PitcherTarget
     pitcherOptions: options,
     decisionOptions: [
       { value: "0", label: "-", normalizedLabel: "-" },
-      { value: "1", label: "勝", normalizedLabel: "勝" },
-      { value: "2", label: "敗", normalizedLabel: "敗" },
+      { value: "1", label: "勝ち", normalizedLabel: "勝ち" },
+      { value: "2", label: "負け", normalizedLabel: "負け" },
+      { value: "3", label: "セーブ", normalizedLabel: "セーブ" },
     ],
     statFields: {
       innings: control(`MemberScoreDfIning[${index}]`, index),
@@ -577,7 +578,7 @@ describe("buildPitcherMappingPreview", () => {
     );
 
     expect(mapping.assignments[0].derivedStats.decision).toBe("win");
-    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("勝");
+    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("勝ち");
     expect(mapping.assignments[1].derivedStats.decision).toBeNull();
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
@@ -602,7 +603,7 @@ describe("buildPitcherMappingPreview", () => {
 
     expect(mapping.assignments[0].derivedStats.decision).toBeNull();
     expect(mapping.assignments[1].derivedStats.decision).toBe("win");
-    expect(mapping.assignments[1].decisionSelection?.targetOptionLabel).toBe("勝");
+    expect(mapping.assignments[1].decisionSelection?.targetOptionLabel).toBe("勝ち");
     expect(mapping.warnings).toContain("藤田: 先発投手がスカイツリーグの責任投球回を満たさないため、救援投手から勝利投手を概算しました");
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
@@ -626,7 +627,7 @@ describe("buildPitcherMappingPreview", () => {
     );
 
     expect(mapping.assignments[0].derivedStats.decision).toBe("win");
-    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("勝");
+    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("勝ち");
     expect(mapping.assignments[1].derivedStats.decision).toBeNull();
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
@@ -650,8 +651,42 @@ describe("buildPitcherMappingPreview", () => {
     );
 
     expect(mapping.assignments[0].derivedStats.decision).toBe("loss");
-    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("敗");
+    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("負け");
     expect(mapping.assignments[1].derivedStats.decision).toBeNull();
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
+  it("ignores batting events beyond the final played scoreboard inning", () => {
+    const source = buildDecisionSourcePreview({
+      ownRuns: [1, 0, 0, 0, 4],
+      opponentRuns: [1, 1, 5, 4, 0],
+    });
+    source.batterRows = [1, 2, 3].map((battingOrder) => ({
+      battingOrder,
+      playerName: `打者${battingOrder}`,
+      inningResults: [1, 2, 3, 4, 5, 6].map((inning) => ({
+        inning,
+        rawText: "アウト",
+        events: ["アウト"],
+      })),
+    }));
+
+    const mapping = buildPitcherMappingPreview(
+      [
+        { order: 1, rawText: "安楽 3回", pitcherName: "安楽", innings: 3, outs: 0 },
+        { order: 2, rawText: "藤田 2回", pitcherName: "藤田", innings: 2, outs: 0 },
+      ],
+      source,
+      {
+        ...targetPreview,
+        pitcherRows: [pitcherRow(1, options), pitcherRow(2, options)],
+      },
+    );
+
+    expect(mapping.warnings).not.toContain(
+      "公開打撃成績から確認できたアウト数は 18アウト (6回) ですが、入力された投手割当は 15アウト (5回) です",
+    );
+    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("負け");
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 
