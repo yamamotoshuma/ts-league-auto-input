@@ -690,6 +690,54 @@ describe("buildPitcherMappingPreview", () => {
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 
+  it("fills a missing final out when the opponent is top and the bottom half was played", () => {
+    const source = buildDecisionSourcePreview({
+      ownRuns: [1, 0, 0, 0, 4],
+      opponentRuns: [1, 1, 5, 4, 0],
+    });
+    const [ownRow, opponentRow] = source.scoreboardRows ?? [];
+    source.scoreboardRows = [
+      { ...opponentRow, battingSide: "top" },
+      { ...ownRow, battingSide: "bottom" },
+    ];
+    source.batterRows = [
+      {
+        battingOrder: 1,
+        playerName: "打者1",
+        inningResults: [1, 2, 3, 4, 5, 6].map((inning) => ({ inning, rawText: "アウト", events: ["アウト"] })),
+      },
+      {
+        battingOrder: 2,
+        playerName: "打者2",
+        inningResults: [1, 2, 3, 4].map((inning) => ({ inning, rawText: "アウト", events: ["アウト"] })).concat([
+          { inning: 5, rawText: "敵失", events: ["敵失"] },
+          { inning: 6, rawText: "アウト", events: ["アウト"] },
+        ]),
+      },
+      {
+        battingOrder: 3,
+        playerName: "打者3",
+        inningResults: [1, 2, 3, 4, 5, 6].map((inning) => ({ inning, rawText: "アウト", events: ["アウト"] })),
+      },
+    ];
+
+    const mapping = buildPitcherMappingPreview(
+      [
+        { order: 1, rawText: "安楽 3回", pitcherName: "安楽", innings: 3, outs: 0 },
+        { order: 2, rawText: "藤田 2回", pitcherName: "藤田", innings: 2, outs: 0 },
+      ],
+      source,
+      {
+        ...targetPreview,
+        pitcherRows: [pitcherRow(1, options), pitcherRow(2, options)],
+      },
+    );
+
+    expect(mapping.warnings.some((warning) => warning.includes("投手割当に必要なアウト数"))).toBe(false);
+    expect(mapping.assignments[0].decisionSelection?.targetOptionLabel).toBe("負け");
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
   it("stays commit-ready even when an existing pitcher row will be overwritten", () => {
     const allocations: PitcherAllocation[] = [{ order: 1, rawText: "安楽 1回", pitcherName: "安楽", innings: 1, outs: 0 }];
     const row = pitcherRow(1, options);

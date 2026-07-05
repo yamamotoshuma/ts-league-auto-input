@@ -814,6 +814,28 @@ function estimateEarnedRunsForInning(
   };
 }
 
+function shouldCompleteFinalOpponentHalfInning(source: PitcherSourcePreview, inning: number): boolean {
+  const rows = findScoreboardRows(source);
+  if (!rows) {
+    return false;
+  }
+
+  const opponentInning = rows.opponentRow.runsByInning.find((item) => item.inning === inning);
+  if (!opponentInning || opponentInning.runs === null) {
+    return false;
+  }
+
+  if (rows.opponentRow.battingSide === "top") {
+    return rows.ownRow.runsByInning.some((item) => item.inning === inning && item.runs !== null);
+  }
+
+  if (inning < getPlayedInnings(source)) {
+    return true;
+  }
+
+  return getTotalRuns(rows.opponentRow) <= getTotalRuns(rows.ownRow);
+}
+
 function buildOrderedSourceEvents(source: PitcherSourcePreview): SourceEvent[] {
   const grouped = new Map<number, Array<{ battingOrder: number; rowIndex: number; playerName: string; events: string[] }>>();
   const playedInnings = getPlayedInnings(source);
@@ -866,7 +888,8 @@ function buildOrderedSourceEvents(source: PitcherSourcePreview): SourceEvent[] {
     }
 
     const isLastVisibleInning = inningIndex === orderedInnings.length - 1;
-    if (!isLastVisibleInning && outsInInning < 3) {
+    const shouldCompleteInning = !isLastVisibleInning || shouldCompleteFinalOpponentHalfInning(source, inning);
+    if (shouldCompleteInning && outsInInning < 3) {
       for (let index = outsInInning; index < 3; index += 1) {
         events.push({
           eventIndex,
