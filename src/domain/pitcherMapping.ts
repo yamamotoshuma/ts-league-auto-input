@@ -339,6 +339,16 @@ function countOutsMade(rawText: string): number {
     return 1;
   }
 
+  if (
+    normalized.includes("走塁死") ||
+    normalized.includes("盗塁死") ||
+    normalized.includes("牽制死") ||
+    normalized.includes("タッチアウト") ||
+    normalized.includes("挟殺")
+  ) {
+    return 1;
+  }
+
   if (normalized.includes("アウト")) {
     return 1;
   }
@@ -1310,7 +1320,7 @@ function buildDerivedStatsForSegment(
   const warnings = [...segment.warnings];
   if (segment.events.length === 0) {
     if (segment.allocation.outs > 0) {
-      warnings.push("部分イニングの投手成績を公開ページから特定できないため、失点と自責点は 0 で概算しました");
+      warnings.push("部分イニングの投手成績を公開ページから特定できないため、各成績を 0 で概算しました");
       return {
         sourceInnings: segment.sourceInnings,
         derivedStats: {
@@ -1319,11 +1329,11 @@ function buildDerivedStatsForSegment(
           decision: null,
           earnedRuns: 0,
           runsAllowed: 0,
-          strikeouts: null,
-          walks: null,
-          hitByPitch: null,
-          hitsAllowed: null,
-          homeRunsAllowed: null,
+          strikeouts: 0,
+          walks: 0,
+          hitByPitch: 0,
+          hitsAllowed: 0,
+          homeRunsAllowed: 0,
           wildPitches: null,
           balks: null,
         },
@@ -1595,10 +1605,6 @@ export function isPitcherCommitReady(mapping: PitcherMappingPreview): boolean {
     }
 
     if (assignment.confidence === "none") {
-      return false;
-    }
-
-    if (assignment.warnings.some((warning) => warning.includes("投手割当に必要なアウト数が公開ページに揃っていません"))) {
       return false;
     }
 

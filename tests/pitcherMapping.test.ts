@@ -483,6 +483,54 @@ describe("buildPitcherMappingPreview", () => {
     expect(mapping.warnings).toContain(
       "公開打撃成績から確認できたアウト数は 3アウト (1回) ですが、入力された投手割当は 4アウト (1回1/3) です",
     );
+    expect(mapping.warnings).toContain("藤田: 投手割当に必要なアウト数が公開ページに揃っていません");
+    expect(mapping.assignments[1].derivedStats).toMatchObject({
+      innings: 0,
+      outs: 1,
+      earnedRuns: 0,
+      runsAllowed: 0,
+      strikeouts: 0,
+      walks: 0,
+      hitByPitch: 0,
+      hitsAllowed: 0,
+      homeRunsAllowed: 0,
+    });
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
+  it("counts runner outs as pitcher outs", () => {
+    const allocations: PitcherAllocation[] = [
+      { order: 1, rawText: "安楽 1回", pitcherName: "安楽", innings: 1, outs: 0 },
+    ];
+    const source = {
+      ...buildGenericOutSourcePreview(0),
+      batterRows: [
+        { battingOrder: 1, playerName: "打者1", inningResults: [{ inning: 1, rawText: "中飛", events: ["中飛"] }] },
+        { battingOrder: 2, playerName: "打者2", inningResults: [{ inning: 1, rawText: "走塁死", events: ["走塁死"] }] },
+        { battingOrder: 3, playerName: "打者3", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+      ],
+      innings: [
+        {
+          inning: 1,
+          runsAllowed: 0,
+          hitsAllowed: 0,
+          homeRunsAllowed: 0,
+          strikeouts: 1,
+          walks: 0,
+          hitByPitch: 0,
+          eventCount: 3,
+          rawEvents: ["打者1: 中飛", "打者2: 走塁死", "打者3: 三振"],
+        },
+      ],
+    };
+
+    const mapping = buildPitcherMappingPreview(allocations, source, {
+      ...targetPreview,
+      pitcherRows: [pitcherRow(1, options)],
+    });
+
+    expect(mapping.warnings.some((warning) => warning.includes("アウト数は 2アウト"))).toBe(false);
+    expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 
   it("fills a missing non-final inning out so a completed inning stays within that inning", () => {
