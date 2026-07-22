@@ -311,12 +311,16 @@ function collectAssignments(target: PitcherTargetRow | null): Partial<Record<Pit
 function parseRunsScored(rawText: string): number {
   const normalized = rawText.normalize("NFKC");
   const match = normalized.match(/[（(](\d+)[）)]$/);
-  if (!match) {
-    return 0;
+  if (match) {
+    const parsed = Number.parseInt(match[1], 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
   }
 
-  const parsed = Number.parseInt(match[1], 10);
-  return Number.isNaN(parsed) ? 0 : parsed;
+  if ((normalized.includes("押出") || normalized.includes("押し出")) && (normalized.includes("四球") || normalized.includes("死球"))) {
+    return 1;
+  }
+
+  return 0;
 }
 
 function countOutsMade(rawText: string): number {
@@ -475,6 +479,31 @@ function scoreHighestBaseRunners(
 
     scoreRunner(bases[index], earnedRunsTotal, allowEarned);
     bases[index] = null;
+    remaining -= 1;
+  }
+}
+
+function scoreExplicitAdditionalRuns(
+  bases: Array<InningRunnerState | null>,
+  count: number,
+  earnedRunsTotal: { value: number },
+  allowEarned: boolean,
+  belongsToSegment: boolean,
+): void {
+  let remaining = count;
+  for (let index = 2; index >= 0 && remaining > 0; index -= 1) {
+    const runner = bases[index];
+    if (!runner) {
+      continue;
+    }
+
+    scoreRunner(runner, earnedRunsTotal, allowEarned);
+    bases[index] = null;
+    remaining -= 1;
+  }
+
+  while (remaining > 0) {
+    scoreRunner({ belongsToSegment, earned: true }, earnedRunsTotal, allowEarned);
     remaining -= 1;
   }
 }
@@ -752,6 +781,7 @@ function estimateEarnedRunsForInning(
     }
 
     if (event.isWalk || event.isHitByPitch) {
+      let scoredOnPlay = 0;
       if (bases[0]) {
         if (bases[1]) {
           if (bases[2]) {
@@ -759,10 +789,20 @@ function estimateEarnedRunsForInning(
               scoringAfterReconstructedEnd = true;
             }
             scoreRunner(bases[2], earnedRunsTotal, allowEarnedBeforePlay);
+            scoredOnPlay += 1;
           }
           bases[2] = bases[1];
         }
         bases[1] = bases[0];
+      }
+      if (event.runsScored > scoredOnPlay) {
+        scoreExplicitAdditionalRuns(
+          bases,
+          event.runsScored - scoredOnPlay,
+          earnedRunsTotal,
+          allowEarnedBeforePlay,
+          belongsToSegment,
+        );
       }
       bases[0] = batterRunner;
       continue;

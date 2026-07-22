@@ -581,6 +581,109 @@ describe("buildPitcherMappingPreview", () => {
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 
+  it("charges an earned run for a bases-loaded walk", () => {
+    const allocations: PitcherAllocation[] = [
+      { order: 1, rawText: "安楽 1回", pitcherName: "安楽", innings: 1, outs: 0 },
+    ];
+    const source: PitcherSourcePreview = {
+      sourceUrl: "https://ts-league.com/game/2026/index.php?gameid=99995",
+      pageTitle: "試合結果",
+      selectedTableIndex: 1,
+      selectedHeaders: ["打順", "選手", "1回"],
+      scoreboardTableIndex: 0,
+      scoreboardHeaders: ["チーム", "1回"],
+      opponentTeam: "Re",
+      batterRows: [
+        { battingOrder: 1, playerName: "打者1", inningResults: [{ inning: 1, rawText: "四球", events: ["四球"] }] },
+        { battingOrder: 2, playerName: "打者2", inningResults: [{ inning: 1, rawText: "四球", events: ["四球"] }] },
+        { battingOrder: 3, playerName: "打者3", inningResults: [{ inning: 1, rawText: "四球", events: ["四球"] }] },
+        { battingOrder: 4, playerName: "打者4", inningResults: [{ inning: 1, rawText: "四球(1)", events: ["四球(1)"] }] },
+        { battingOrder: 5, playerName: "打者5", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+        { battingOrder: 6, playerName: "打者6", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+        { battingOrder: 7, playerName: "打者7", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+      ],
+      innings: [
+        {
+          inning: 1,
+          runsAllowed: 1,
+          hitsAllowed: 0,
+          homeRunsAllowed: 0,
+          strikeouts: 3,
+          walks: 4,
+          hitByPitch: 0,
+          eventCount: 7,
+          rawEvents: ["打者1: 四球", "打者2: 四球", "打者3: 四球", "打者4: 四球(1)", "打者5: 三振", "打者6: 三振", "打者7: 三振"],
+        },
+      ],
+      warnings: [],
+    };
+
+    const mapping = buildPitcherMappingPreview(allocations, source, {
+      ...targetPreview,
+      pitcherRows: [pitcherRow(1, options)],
+    });
+
+    expect(mapping.assignments[0]).toMatchObject({
+      derivedStats: {
+        earnedRuns: 1,
+        runsAllowed: 1,
+        walks: 4,
+      },
+    });
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
+  it("honors explicit runs on walks when the inning needs earned-run reconstruction", () => {
+    const allocations: PitcherAllocation[] = [
+      { order: 1, rawText: "安楽 1回", pitcherName: "安楽", innings: 1, outs: 0 },
+    ];
+    const source: PitcherSourcePreview = {
+      sourceUrl: "https://ts-league.com/game/2026/index.php?gameid=99994",
+      pageTitle: "試合結果",
+      selectedTableIndex: 1,
+      selectedHeaders: ["打順", "選手", "1回"],
+      scoreboardTableIndex: 0,
+      scoreboardHeaders: ["チーム", "1回"],
+      opponentTeam: "Re",
+      batterRows: [
+        { battingOrder: 1, playerName: "打者1", inningResults: [{ inning: 1, rawText: "四球", events: ["四球", "盗塁"] }] },
+        { battingOrder: 2, playerName: "打者2", inningResults: [{ inning: 1, rawText: "四球", events: ["四球", "盗塁"] }] },
+        { battingOrder: 3, playerName: "打者3", inningResults: [{ inning: 1, rawText: "四球", events: ["四球(1)", "敵失"] }] },
+        { battingOrder: 4, playerName: "打者4", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+        { battingOrder: 5, playerName: "打者5", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+        { battingOrder: 6, playerName: "打者6", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+      ],
+      innings: [
+        {
+          inning: 1,
+          runsAllowed: 1,
+          hitsAllowed: 0,
+          homeRunsAllowed: 0,
+          strikeouts: 3,
+          walks: 3,
+          hitByPitch: 0,
+          eventCount: 8,
+          rawEvents: ["打者1: 四球", "打者1: 盗塁", "打者2: 四球", "打者2: 盗塁", "打者3: 四球(1)", "打者3: 敵失", "打者4: 三振", "打者5: 三振", "打者6: 三振"],
+        },
+      ],
+      warnings: [],
+    };
+
+    const mapping = buildPitcherMappingPreview(allocations, source, {
+      ...targetPreview,
+      pitcherRows: [pitcherRow(1, options)],
+    });
+
+    expect(mapping.assignments[0]).toMatchObject({
+      derivedStats: {
+        earnedRuns: 1,
+        runsAllowed: 1,
+        walks: 3,
+      },
+    });
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
   it("does not charge earned runs after a two-out error should have ended the reconstructed inning", () => {
     const allocations: PitcherAllocation[] = [
       { order: 1, rawText: "安楽 1回", pitcherName: "安楽", innings: 1, outs: 0 },
