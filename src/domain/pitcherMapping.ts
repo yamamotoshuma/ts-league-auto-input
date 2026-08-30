@@ -1288,6 +1288,34 @@ function deriveAllocationSegments(
   source: PitcherSourcePreview,
 ): AllocationSegment[] {
   const sourceEvents = buildOrderedSourceEvents(source);
+
+  if (allocations.every((allocation) => allocation.outs === 0)) {
+    let inningCursor = 0;
+
+    return allocations.map((allocation) => {
+      const warnings: string[] = [];
+      const sourceInnings = source.innings.slice(inningCursor, inningCursor + allocation.innings);
+      const fallbackInning = source.innings[inningCursor]?.inning ?? source.innings.at(-1)?.inning ?? 1;
+      const inningNumbers = new Set(sourceInnings.map((inning) => inning.inning));
+      const events = sourceEvents.filter((event) => inningNumbers.has(event.inning));
+
+      if (sourceInnings.length < allocation.innings) {
+        warnings.push("投手割当に必要なイニング数が公開ページに揃っていません");
+      }
+
+      inningCursor += allocation.innings;
+
+      return {
+        allocation,
+        inningStart: sourceInnings[0]?.inning ?? fallbackInning,
+        inningEnd: sourceInnings.at(-1)?.inning ?? fallbackInning,
+        events,
+        sourceInnings,
+        warnings,
+      };
+    });
+  }
+
   if (sourceEvents.length === 0) {
     let inningCursor = 0;
 

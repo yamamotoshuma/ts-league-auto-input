@@ -533,6 +533,41 @@ describe("buildPitcherMappingPreview", () => {
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 
+  it("keeps whole-inning stats with the assigned pitcher when an inning contains extra outs", () => {
+    const source: PitcherSourcePreview = {
+      ...buildGenericOutSourcePreview(0),
+      selectedHeaders: ["打順", "選手", "1回", "2回"],
+      scoreboardHeaders: ["チーム", "1回", "2回"],
+      batterRows: [
+        { battingOrder: 1, playerName: "打者1", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+        { battingOrder: 2, playerName: "打者2", inningResults: [{ inning: 1, rawText: "アウト", events: ["アウト"] }] },
+        { battingOrder: 3, playerName: "打者3", inningResults: [{ inning: 1, rawText: "アウト", events: ["アウト"] }] },
+        { battingOrder: 4, playerName: "打者4", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+        { battingOrder: 5, playerName: "打者5", inningResults: [{ inning: 2, rawText: "三振", events: ["三振"] }] },
+        { battingOrder: 6, playerName: "打者6", inningResults: [{ inning: 2, rawText: "アウト", events: ["アウト"] }] },
+        { battingOrder: 7, playerName: "打者7", inningResults: [{ inning: 2, rawText: "アウト", events: ["アウト"] }] },
+      ],
+      innings: [
+        { inning: 1, runsAllowed: 0, hitsAllowed: 0, homeRunsAllowed: 0, strikeouts: 2, walks: 0, hitByPitch: 0, eventCount: 4, rawEvents: [] },
+        { inning: 2, runsAllowed: 0, hitsAllowed: 0, homeRunsAllowed: 0, strikeouts: 1, walks: 0, hitByPitch: 0, eventCount: 3, rawEvents: [] },
+      ],
+    };
+
+    const mapping = buildPitcherMappingPreview(
+      [
+        { order: 1, rawText: "安楽 1回", pitcherName: "安楽", innings: 1, outs: 0 },
+        { order: 2, rawText: "藤田 1回", pitcherName: "藤田", innings: 1, outs: 0 },
+      ],
+      source,
+      targetPreview,
+    );
+
+    expect(mapping.assignments[0].derivedStats.strikeouts).toBe(2);
+    expect(mapping.assignments[1].derivedStats.strikeouts).toBe(1);
+    expect(mapping.assignments[0].inningEnd).toBe(1);
+    expect(mapping.assignments[1].inningStart).toBe(2);
+  });
+
   it("fills a missing non-final inning out so a completed inning stays within that inning", () => {
     const allocations: PitcherAllocation[] = [
       { order: 1, rawText: "安楽 1回", pitcherName: "安楽", innings: 1, outs: 0 },
