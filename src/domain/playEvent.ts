@@ -217,6 +217,14 @@ export function getTargetEventLabelCandidates(sourceText: string): string[] {
     return prefix ? [`${prefix}選`, "野選"] : ["野選"];
   }
 
+  if (
+    normalized.includes("併殺") ||
+    normalized.includes("ゲッツー") ||
+    normalizedUpper.includes("DP")
+  ) {
+    return prefix ? [`${prefix}併`, "併殺"] : ["併殺"];
+  }
+
   return [normalized];
 }
 
