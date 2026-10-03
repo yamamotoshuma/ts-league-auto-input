@@ -14,8 +14,7 @@ export async function createContext(): Promise<BrowserContext> {
   // これにより、一度手動で解いたreCAPTCHAの「信頼度」が次回の実行に引き継がれます
   const userDataDir = path.join(process.cwd(), ".user_data");
 
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: process.env.PLAYWRIGHT_HEADLESS !== "false",
+  const launchOptions = {
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -30,7 +29,28 @@ export async function createContext(): Promise<BrowserContext> {
     extraHTTPHeaders: {
       'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
     }
-  });
+  };
+  const configuredHeadless = process.env.PLAYWRIGHT_HEADLESS !== "false";
+  let context: BrowserContext;
+
+  try {
+    context = await chromium.launchPersistentContext(userDataDir, {
+      ...launchOptions,
+      headless: configuredHeadless,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const displayUnavailable = /XServer|X server|DISPLAY|authorization protocol/i.test(message);
+    if (configuredHeadless || !displayUnavailable) {
+      throw error;
+    }
+
+    console.warn("Headed Chromium could not use the display; retrying in headless mode");
+    context = await chromium.launchPersistentContext(userDataDir, {
+      ...launchOptions,
+      headless: true,
+    });
+  }
 
   // Stealthプラグインがカバーしきれない微細な調整
   await context.addInitScript(`

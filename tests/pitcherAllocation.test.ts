@@ -45,4 +45,12 @@ describe("parsePitcherAllocationText", () => {
 
     expect(() => parsePitcherAllocationText("安楽\n藤田 3回")).toThrow(/1行目/);
   });
+
+  it("accepts explicit zero-thirds and three-thirds used for a mid-inning change", () => {
+    expect(parsePitcherAllocationText("安楽 3回\n藤田 2回0/3\n若菜 3/3")).toEqual([
+      { order: 1, rawText: "安楽 3回", pitcherName: "安楽", innings: 3, outs: 0 },
+      { order: 2, rawText: "藤田 2回0/3", pitcherName: "藤田", innings: 2, outs: 0 },
+      { order: 3, rawText: "若菜 3/3", pitcherName: "若菜", innings: 1, outs: 0 },
+    ]);
+  });
 });

@@ -31,9 +31,53 @@ function createJobRecord(): JobRecord {
   };
 }
 
+function addBatterPublicGamePreview(job: JobRecord): JobRecord {
+  return {
+    ...job,
+    preview: {
+      workflow: "batter",
+      source: null,
+      target: {
+        hiddenInputs: [
+          { name: "Id", value: "14879" },
+          { name: "MemberScoreOfGameYear", value: "2026" },
+        ],
+      },
+      mapping: null,
+      pitcher: null,
+      parkLottery: null,
+      warnings: [],
+      commitReady: true,
+    } as JobRecord["preview"],
+  };
+}
+
+function addPitcherPublicGamePreview(job: JobRecord): JobRecord {
+  return {
+    ...job,
+    preview: {
+      workflow: "pitcher",
+      source: null,
+      target: null,
+      mapping: null,
+      pitcher: {
+        allocations: [],
+        source: {
+          sourceUrl: "https://ts-league.com/game/2026/index.php?gameid=14879",
+        },
+        target: null,
+        mapping: null,
+      },
+      parkLottery: null,
+      warnings: [],
+      commitReady: true,
+    } as JobRecord["preview"],
+  };
+}
+
 describe("jobNotification", () => {
   it("builds a compact success message with result summary", () => {
-    const job = createJobRecord();
+    const job = addBatterPublicGamePreview(createJobRecord());
     const message = buildJobSucceededMessage(job, {
       message: "ok",
       sourcePlayerCount: 9,
@@ -51,14 +95,19 @@ describe("jobNotification", () => {
     expect(message).toContain("保存確認: 済み");
     expect(message).not.toContain("ジョブID");
     expect(message).not.toContain("編集シーズン");
-    expect(message).not.toContain("⚠️重要な情報⚠️");
+    expect(message).toContain("⚠️重要な情報⚠️");
+    expect(message).toContain("野手成績はシステムによる自動反映です。");
+    expect(message).toContain("**必ず各選手が自分の成績を目視で確認**");
+    expect(message).toContain("成績の誤りは各自の責任です。");
+    expect(message).toContain("試合詳細: https://ts-league.com/game/2026/index.php?gameid=14879");
+    expect(message).not.toContain("山本");
   });
 
   it("adds an important manual verification notice to pitcher success messages", () => {
-    const job = {
+    const job = addPitcherPublicGamePreview({
       ...createJobRecord(),
       workflow: "pitcher" as const,
-    };
+    });
     const message = buildJobSucceededMessage(job, {
       message: "ok",
       sourcePlayerCount: 2,
@@ -71,12 +120,15 @@ describe("jobNotification", () => {
 
     expect(message).toContain("処理: 投手成績 / 保存実行");
     expect(message).toContain("⚠️重要な情報⚠️");
-    expect(message).toContain("投手成績の失点・自責点はシステムで概算しているため、必ず登板した選手が責任を持って目視で確認してください。");
-    expect(message).toContain("システムと山本は、この概算値の正確性について責任を持ちません。");
+    expect(message).toContain("投手成績はシステムによる自動反映で、失点・自責点・勝敗などには概算を含みます。");
+    expect(message).toContain("**必ず登板した選手が自分の投手成績を目視で確認**");
+    expect(message).toContain("成績の誤りは各自の責任です。");
+    expect(message).toContain("試合詳細: https://ts-league.com/game/2026/index.php?gameid=14879");
+    expect(message).not.toContain("山本");
   });
 
   it("builds a compact error message with step and content", () => {
-    const job = createJobRecord();
+    const job = addBatterPublicGamePreview(createJobRecord());
     const message = buildJobFailedMessage(job, {
       message: "保存に失敗しました",
       step: "target.submit-form",
@@ -87,14 +139,17 @@ describe("jobNotification", () => {
     expect(message).toContain("【TS-League自動反映】エラー");
     expect(message).toContain("工程: 保存を実行");
     expect(message).toContain("内容: 保存に失敗しました");
+    expect(message).toContain("⚠️重要な情報⚠️");
+    expect(message).toContain("成績の誤りは各自の責任です。");
+    expect(message).toContain("試合詳細: https://ts-league.com/game/2026/index.php?gameid=14879");
     expect(message).not.toContain("ジョブID");
   });
 
   it("adds an important manual verification notice to pitcher error messages", () => {
-    const job = {
+    const job = addPitcherPublicGamePreview({
       ...createJobRecord(),
       workflow: "pitcher" as const,
-    };
+    });
     const message = buildJobFailedMessage(job, {
       message: "保存に失敗しました",
       step: "target.submit-form",
@@ -104,7 +159,9 @@ describe("jobNotification", () => {
 
     expect(message).toContain("処理: 投手成績 / 保存実行");
     expect(message).toContain("⚠️重要な情報⚠️");
-    expect(message).toContain("システムと山本は、この概算値の正確性について責任を持ちません。");
+    expect(message).toContain("成績の誤りは各自の責任です。");
+    expect(message).toContain("試合詳細: https://ts-league.com/game/2026/index.php?gameid=14879");
+    expect(message).not.toContain("山本");
   });
 
   it("builds a park lottery success message with failure details only for failed entries", () => {

@@ -21,10 +21,18 @@ const STEP_LABELS: Record<string, string> = {
   "notify.discord": "Discord通知",
 };
 
+const BATTER_VERIFICATION_NOTICE_LINES = [
+  "⚠️重要な情報⚠️",
+  "野手成績はシステムによる自動反映です。システムが確認するのは「自動反映が完了したこと」までで、各成績の正確性は保証しません。",
+  "**必ず各選手が自分の成績を目視で確認**し、誤りがあれば速やかに申告の上、**各自で修正**してください。",
+  "成績の誤りは各自の責任です。再三のお願いとなりますが、必ず各自で確認してください。",
+];
+
 const PITCHER_ESTIMATION_NOTICE_LINES = [
   "⚠️重要な情報⚠️",
-  "投手成績の失点・自責点はシステムで概算しているため、必ず登板した選手が責任を持って目視で確認してください。",
-  "システムと山本は、この概算値の正確性について責任を持ちません。",
+  "投手成績はシステムによる自動反映で、失点・自責点・勝敗などには概算を含みます。システムが確認するのは「自動反映が完了したこと」までで、各成績の正確性は保証しません。",
+  "**必ず登板した選手が自分の投手成績を目視で確認**し、誤りがあれば速やかに申告の上、**各自で修正**してください。",
+  "成績の誤りは各自の責任です。再三のお願いとなりますが、必ず各自で確認してください。",
 ];
 
 function formatDate(value: string | null): string {
@@ -58,7 +66,57 @@ function workflowLabel(job: JobRecord): string {
 }
 
 function buildImportantNoticeLines(job: JobRecord): string[] {
-  return job.workflow === "pitcher" ? PITCHER_ESTIMATION_NOTICE_LINES : [];
+  return job.workflow === "pitcher"
+    ? PITCHER_ESTIMATION_NOTICE_LINES
+    : (job.workflow ?? "batter") === "batter"
+      ? BATTER_VERIFICATION_NOTICE_LINES
+      : [];
+}
+
+function findHiddenInputValue(
+  inputs: Array<{ name: string | null; value: string | null }> | undefined,
+  names: string[],
+): string | null {
+  if (!inputs) {
+    return null;
+  }
+
+  for (const name of names) {
+    const value = inputs.find((input) => input.name === name)?.value?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function resolvePublicGameUrl(job: JobRecord): string | null {
+  const pitcherSourceUrl = job.preview?.pitcher?.source?.sourceUrl ?? null;
+  if (pitcherSourceUrl && /\/game\/\d{4}\/index\.php\?[^#]*gameid=\d+/.test(pitcherSourceUrl)) {
+    return pitcherSourceUrl;
+  }
+
+  const hiddenInputs = job.preview?.target?.hiddenInputs ?? job.preview?.pitcher?.target?.hiddenInputs;
+  const gameId = findHiddenInputValue(hiddenInputs, ["Id"]);
+  const gameYear =
+    findHiddenInputValue(hiddenInputs, [
+      "MemberScoreOfGameYear",
+      "MemberScoreOfGameYear2",
+      "MemberScoreDfGameYear",
+      "MemberScoreDfGameYear2",
+    ]) ?? job.targetGameSeasonYear;
+
+  if (!gameId || !gameYear || !/^\d+$/.test(gameId) || !/^\d{4}$/.test(gameYear)) {
+    return null;
+  }
+
+  return `https://ts-league.com/game/${gameYear}/index.php?gameid=${gameId}`;
+}
+
+function buildGameDetailLines(job: JobRecord): string[] {
+  const publicGameUrl = resolvePublicGameUrl(job);
+  return publicGameUrl ? [`試合詳細: ${publicGameUrl}`] : [];
 }
 
 function buildSummaryLines(job: JobRecord): string[] {
@@ -134,6 +192,7 @@ export function buildJobSucceededMessage(job: JobRecord, resultSummary: JobResul
     "【TS-League自動反映】完了",
     ...buildSummaryLines(job),
     ...buildImportantNoticeLines(job),
+    ...buildGameDetailLines(job),
     `結果: 対応 ${resultSummary?.matchedPlayers ?? "-"} / 取得 ${resultSummary?.sourcePlayerCount ?? "-"}`,
     `未対応: ${resultSummary?.unmappedPlayers ?? "-"}`,
     `保存確認: ${resultSummary?.saved ? "済み" : "なし"}`,
@@ -159,6 +218,7 @@ export function buildJobFailedMessage(job: JobRecord, errorSummary: JobErrorSumm
     "【TS-League自動反映】エラー",
     ...buildSummaryLines(job),
     ...buildImportantNoticeLines(job),
+    ...buildGameDetailLines(job),
     `工程: ${stepLabel(errorSummary?.step)}`,
     `内容: ${errorSummary?.message ?? "不明"}`,
   ].join("\n");

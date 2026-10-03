@@ -7,6 +7,10 @@ function parseOuts(fragment: string | undefined): number {
   }
 
   const normalized = normalizeText(fragment).replaceAll(" ", "");
+  if (normalized === "0/3" || normalized === ".0") {
+    return 0;
+  }
+
   if (normalized === "1/3" || normalized === ".1") {
     return 1;
   }
@@ -35,14 +39,15 @@ function parseInningFragment(fragment: string): { innings: number; outs: number 
     };
   }
 
-  if (/^(1\/3|2\/3)(?:回)?$/.test(normalized)) {
+  if (/^(0\/3|1\/3|2\/3|3\/3)(?:回)?$/.test(normalized)) {
+    const fraction = normalized.replace(/回$/, "");
     return {
-      innings: 0,
-      outs: parseOuts(normalized.replace(/回$/, "")),
+      innings: fraction === "3/3" ? 1 : 0,
+      outs: fraction === "3/3" ? 0 : parseOuts(fraction),
     };
   }
 
-  const decimalMatch = normalized.match(/^(\d+)\.(1|2)$/);
+  const decimalMatch = normalized.match(/^(\d+)\.(0|1|2)$/);
   if (decimalMatch) {
     return {
       innings: Number.parseInt(decimalMatch[1], 10),
@@ -50,11 +55,12 @@ function parseInningFragment(fragment: string): { innings: number; outs: number 
     };
   }
 
-  const mixedMatch = normalized.match(/^(\d+)(?:回)?(1\/3|2\/3)$/);
+  const mixedMatch = normalized.match(/^(\d+)(?:回)?(0\/3|1\/3|2\/3|3\/3)$/);
   if (mixedMatch) {
+    const wholeInningCarry = mixedMatch[2] === "3/3" ? 1 : 0;
     return {
-      innings: Number.parseInt(mixedMatch[1], 10),
-      outs: parseOuts(mixedMatch[2]),
+      innings: Number.parseInt(mixedMatch[1], 10) + wholeInningCarry,
+      outs: wholeInningCarry === 1 ? 0 : parseOuts(mixedMatch[2]),
     };
   }
 
@@ -79,7 +85,7 @@ function parseLine(line: string, order: number): PitcherAllocation {
     throw new Error("回数を解釈できません");
   }
 
-  if (innings === 0 && outs === 0) {
+  if (innings === 0 && outs === 0 && !/0\/3/.test(normalized)) {
     throw new Error("0回は入力できません");
   }
 

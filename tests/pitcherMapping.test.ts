@@ -411,6 +411,41 @@ describe("buildPitcherMappingPreview", () => {
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 
+  it("assigns leading zero-out events to a pitcher explicitly marked with 0/3", () => {
+    const source: PitcherSourcePreview = {
+      ...buildPartialInningSourcePreview(0),
+      selectedHeaders: ["打順", "選手", "1回", "2回"],
+      scoreboardHeaders: ["チーム", "1回", "2回"],
+      batterRows: [
+        { battingOrder: 1, playerName: "打者1", inningResults: [{ inning: 1, rawText: "三振", events: ["三振"] }] },
+        { battingOrder: 2, playerName: "打者2", inningResults: [{ inning: 1, rawText: "遊ゴロ", events: ["遊ゴロ"] }] },
+        { battingOrder: 3, playerName: "打者3", inningResults: [{ inning: 1, rawText: "中飛", events: ["中飛"] }] },
+        { battingOrder: 4, playerName: "打者4", inningResults: [{ inning: 2, rawText: "四球", events: ["四球"] }] },
+        { battingOrder: 5, playerName: "打者5", inningResults: [{ inning: 2, rawText: "中安", events: ["中安"] }] },
+        { battingOrder: 6, playerName: "打者6", inningResults: [{ inning: 2, rawText: "三振", events: ["三振"] }] },
+        { battingOrder: 7, playerName: "打者7", inningResults: [{ inning: 2, rawText: "遊ゴロ", events: ["遊ゴロ"] }] },
+        { battingOrder: 8, playerName: "打者8", inningResults: [{ inning: 2, rawText: "右飛", events: ["右飛"] }] },
+      ],
+      innings: [
+        { inning: 1, runsAllowed: 0, hitsAllowed: 0, homeRunsAllowed: 0, strikeouts: 1, walks: 0, hitByPitch: 0, eventCount: 3, rawEvents: [] },
+        { inning: 2, runsAllowed: 0, hitsAllowed: 1, homeRunsAllowed: 0, strikeouts: 1, walks: 1, hitByPitch: 0, eventCount: 5, rawEvents: [] },
+      ],
+    };
+    const allocations: PitcherAllocation[] = [
+      { order: 1, rawText: "安楽 1回0/3", pitcherName: "安楽", innings: 1, outs: 0 },
+      { order: 2, rawText: "藤田 3/3", pitcherName: "藤田", innings: 1, outs: 0 },
+    ];
+
+    const mapping = buildPitcherMappingPreview(allocations, source, targetPreview);
+
+    expect(mapping.assignments[0].derivedStats).toMatchObject({ innings: 1, outs: 0, walks: 1, hitsAllowed: 1 });
+    expect(mapping.assignments[0].warnings).toContain(
+      "0/3回の交代位置は、次イニングで最初のアウトになる前の打席までとして概算しました",
+    );
+    expect(mapping.assignments[1].derivedStats).toMatchObject({ innings: 1, outs: 0, walks: 0, hitsAllowed: 0 });
+    expect(isPitcherCommitReady(mapping)).toBe(true);
+  });
+
   it("keeps commit-ready and estimates runs allowed when exact partial-inning attribution is unavailable", () => {
     const allocations: PitcherAllocation[] = [
       { order: 1, rawText: "安楽 2/3", pitcherName: "安楽", innings: 0, outs: 2 },

@@ -1289,7 +1289,9 @@ function deriveAllocationSegments(
 ): AllocationSegment[] {
   const sourceEvents = buildOrderedSourceEvents(source);
 
-  if (allocations.every((allocation) => allocation.outs === 0)) {
+  const hasExplicitThirds = allocations.some((allocation) => /[0-3]\/3/.test(allocation.rawText));
+
+  if (allocations.every((allocation) => allocation.outs === 0) && !hasExplicitThirds) {
     let inningCursor = 0;
 
     return allocations.map((allocation) => {
@@ -1358,6 +1360,19 @@ function deriveAllocationSegments(
       events.push(event);
       recordedOuts += event.outsMade;
       cursor += 1;
+    }
+
+    if (/0\/3/.test(allocation.rawText) && cursor < sourceEvents.length) {
+      const nextInning = sourceEvents[cursor]?.inning;
+      while (
+        cursor < sourceEvents.length &&
+        sourceEvents[cursor].inning === nextInning &&
+        sourceEvents[cursor].outsMade === 0
+      ) {
+        events.push(sourceEvents[cursor]);
+        cursor += 1;
+      }
+      warnings.push("0/3回の交代位置は、次イニングで最初のアウトになる前の打席までとして概算しました");
     }
 
     if (recordedOuts < requiredOuts) {
