@@ -422,13 +422,15 @@ describe("buildPitcherMappingPreview", () => {
         { battingOrder: 3, playerName: "打者3", inningResults: [{ inning: 1, rawText: "中飛", events: ["中飛"] }] },
         { battingOrder: 4, playerName: "打者4", inningResults: [{ inning: 2, rawText: "四球", events: ["四球"] }] },
         { battingOrder: 5, playerName: "打者5", inningResults: [{ inning: 2, rawText: "中安", events: ["中安"] }] },
-        { battingOrder: 6, playerName: "打者6", inningResults: [{ inning: 2, rawText: "三振", events: ["三振"] }] },
-        { battingOrder: 7, playerName: "打者7", inningResults: [{ inning: 2, rawText: "遊ゴロ", events: ["遊ゴロ"] }] },
-        { battingOrder: 8, playerName: "打者8", inningResults: [{ inning: 2, rawText: "右飛", events: ["右飛"] }] },
+        { battingOrder: 6, playerName: "打者6", inningResults: [{ inning: 2, rawText: "二併", events: ["二併"] }] },
+        { battingOrder: 7, playerName: "打者7", inningResults: [{ inning: 2, rawText: "四球", events: ["四球"] }] },
+        { battingOrder: 8, playerName: "打者8", inningResults: [{ inning: 2, rawText: "死球", events: ["死球"] }] },
+        { battingOrder: 9, playerName: "打者9", inningResults: [{ inning: 2, rawText: "中2", events: ["中2"] }] },
+        { battingOrder: 10, playerName: "打者10", inningResults: [{ inning: 2, rawText: "三振", events: ["三振"] }] },
       ],
       innings: [
         { inning: 1, runsAllowed: 0, hitsAllowed: 0, homeRunsAllowed: 0, strikeouts: 1, walks: 0, hitByPitch: 0, eventCount: 3, rawEvents: [] },
-        { inning: 2, runsAllowed: 0, hitsAllowed: 1, homeRunsAllowed: 0, strikeouts: 1, walks: 1, hitByPitch: 0, eventCount: 5, rawEvents: [] },
+        { inning: 2, runsAllowed: 0, hitsAllowed: 2, homeRunsAllowed: 0, strikeouts: 1, walks: 2, hitByPitch: 1, eventCount: 7, rawEvents: [] },
       ],
     };
     const allocations: PitcherAllocation[] = [
@@ -442,7 +444,14 @@ describe("buildPitcherMappingPreview", () => {
     expect(mapping.assignments[0].warnings).toContain(
       "0/3回の交代位置は、次イニングで最初のアウトになる前の打席までとして概算しました",
     );
-    expect(mapping.assignments[1].derivedStats).toMatchObject({ innings: 1, outs: 0, walks: 0, hitsAllowed: 0 });
+    expect(mapping.assignments[1].derivedStats).toMatchObject({
+      innings: 1,
+      outs: 0,
+      strikeouts: 1,
+      walks: 1,
+      hitByPitch: 1,
+      hitsAllowed: 1,
+    });
     expect(isPitcherCommitReady(mapping)).toBe(true);
   });
 

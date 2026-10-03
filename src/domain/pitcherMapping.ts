@@ -331,7 +331,7 @@ function countOutsMade(rawText: string): number {
     return 3;
   }
 
-  if (normalized.includes("併殺") || normalized.includes("ゲッツー")) {
+  if (normalized.includes("併殺") || normalized.includes("ゲッツー") || /併$/.test(normalized)) {
     return 2;
   }
 
